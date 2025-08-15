@@ -1,0 +1,97 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "18"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd backend && npm ci
+          cd ../frontend && npm ci
+
+      - name: Lint code
+        run: |
+          cd backend && npm run lint --if-present
+          cd ../frontend && npm run lint --if-present
+
+      - name: Run tests
+        run: |
+          cd backend && npm test --if-present
+          cd ../frontend && npm test --if-present
+
+      - name: Build application
+        run: |
+          npm run build
+
+      - name: Test build
+        run: |
+          npm start &
+          sleep 10
+          curl -f http://localhost:3000/health || exit 1
+
+  deploy-vercel:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+
+  deploy-railway:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Railway
+        uses: bervProject/railway-deploy@main
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: ${{ secrets.RAILWAY_SERVICE }}
+
+  notify:
+    needs: [deploy-vercel, deploy-railway]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Deployment notification
+        run: |
+          if [ "${{ needs.deploy-vercel.result }}" == "success" ] || [ "${{ needs.deploy-railway.result }}" == "success" ]; then
+            echo "✅ 部署成功！"
+          else
+            echo "❌ 部署失败！"
+            exit 1
+          fi
