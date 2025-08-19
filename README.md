@@ -1,89 +1,92 @@
-# LangChain 翻译应用
+# LangChain Chat - 企业级 AI 聊天应用
 
-基于 [LangChain.js 官方教程](https://js.langchain.com/docs/tutorials/llm_chain) 构建的简单翻译应用。
+基于 Next.js 14 和 LangChain.js 构建的现代化 AI 聊天应用，支持多种 AI 模型和 SSE 流式响应。
 
-## 功能特性
+## ✨ 功能特性
 
-- 🌍 支持多语言翻译（英文翻译为其他语言）
-- 🚀 使用 Groq 的 Llama 模型进行快速推理
-- 📝 支持提示模板和直接消息两种方式
-- 🔄 支持流式输出，实时显示翻译结果
-- 📦 模块化设计，可导入到其他项目
+- 🤖 **多 AI 模型支持**: OpenAI GPT、Groq Llama、Google Gemini
+- 💬 **实时流式对话**: 基于 SSE 的流式响应体验
+- 📱 **响应式设计**: 完美适配桌面端和移动端
+- 🌙 **深色模式**: 支持浅色/深色主题切换
+- 💾 **会话管理**: 本地存储聊天历史，支持多会话
+- 🔍 **智能搜索**: 快速搜索历史对话内容
+- 📤 **数据导出**: 支持导出聊天记录为 JSON 格式
+- ⚡ **高性能**: Edge Runtime 优化，快速响应
 
-## 快速开始
+## 🚀 快速开始
 
-### 1. 安装依赖
+### 环境要求
+
+- Node.js 18+
+- npm 或 yarn
+
+### 安装步骤
+
+1. **安装依赖**
 
 ```bash
 npm install
 ```
 
-### 2. 配置环境变量
-
-复制 `.env.example` 为 `.env` 并填入您的 API 密钥：
+2. **配置环境变量**
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 ```
 
-编辑 `.env` 文件，添加您的 Groq API 密钥：
+编辑 `.env.local` 文件，添加您的 API 密钥：
 
-```
-GROQ_API_KEY=your-groq-api-key-here
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+GOOGLE_API_KEY=your_google_api_key_here
 ```
 
-### 3. 运行应用
+3. **启动开发服务器**
 
 ```bash
-# 运行示例
-npm start
-
-# 开发模式（自动重启）
 npm run dev
 ```
 
-## 使用方法
+4. **访问应用**
+   打开浏览器访问 [http://localhost:3000](http://localhost:3000)
 
-### 作为模块导入
+## 🛠 技术栈
 
-```javascript
-import { translateText, translateTextStream } from './index.js';
+- **前端框架**: Next.js 14 (App Router)
+- **AI 框架**: LangChain.js
+- **样式**: Tailwind CSS
+- **语言**: TypeScript
+- **部署**: Vercel
+- **AI 模型**:
+  - OpenAI GPT-4o Mini
+  - Groq Llama 3.1 8B
+  - Google Gemini 1.5 Flash
 
-// 基本翻译
-const result = await translateText("Hello world!", "Chinese");
-console.log(result); // 你好世界！
+## 🚀 部署到 Vercel
 
-// 流式翻译
-await translateTextStream("Good morning!", "Spanish");
-```
+1. **推送代码到 GitHub**
 
-### 可用函数
+2. **连接 Vercel**
 
-- `translateText(text, language)` - 基本翻译功能
-- `translateTextStream(text, language)` - 流式翻译，实时输出
-- `translateWithMessages(text, language)` - 使用消息直接翻译
+   - 访问 [Vercel Dashboard](https://vercel.com/dashboard)
+   - 导入 GitHub 仓库
 
-## 项目结构
+3. **配置环境变量**
+   在 Vercel 项目设置中添加环境变量：
 
-```
-├── index.js          # 主应用文件
-├── package.json      # 项目配置
-├── .env.example      # 环境变量示例
-└── README.md         # 项目说明
-```
+   - `OPENAI_API_KEY`
+   - `GROQ_API_KEY`
+   - `GOOGLE_API_KEY`
 
-## 技术栈
+4. **部署**
+   Vercel 会自动构建和部署您的应用
 
-- **LangChain.js** - LLM 应用开发框架
-- **Groq** - 快速 LLM 推理服务
-- **Node.js** - JavaScript 运行时
+## 📝 使用说明
 
-## 获取 API 密钥
-
-1. 访问 [Groq Console](https://console.groq.com/)
-2. 注册账户并创建 API 密钥
-3. 将密钥添加到 `.env` 文件中
-
-## 许可证
-
-MIT License
+1. **选择 AI 模型**: 在侧边栏选择您想要使用的 AI 模型
+2. **开始对话**: 在输入框中输入您的问题
+3. **查看响应**: AI 会以流式方式实时回复
+4. **管理会话**: 可以创建新会话、重命名或删除会话
+5. **搜索历史**: 使用搜索功能快速找到历史对话
+6. **导出数据**: 点击导出按钮下载聊天记录
