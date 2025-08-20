@@ -1,16 +1,31 @@
 import { NextRequest } from "next/server";
-import { HumanMessage } from "@langchain/core/messages";
+import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { createChatModel, MODEL_CONFIGS } from "@/lib/langchain/models";
-import { ChatRequest, ModelProvider } from "@/lib/types";
+import { ChatRequest, ModelProvider, Message } from "@/lib/types";
+import {
+  prepareContextMessages,
+  getContextStats,
+  DEFAULT_CONTEXT_CONFIGS,
+} from "@/lib/context/manager";
 
 export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
     const body: ChatRequest = await req.json();
-    const { message, model, temperature, maxTokens } = body;
+    const {
+      message,
+      model,
+      messages: contextMessages = [],
+      temperature,
+      maxTokens,
+    } = body;
 
-    console.log("收到聊天请求:", { model, messageLength: message?.length });
+    console.log("收到聊天请求:", {
+      model,
+      messageLength: message?.length,
+      contextMessages: contextMessages.length,
+    });
 
     // 验证请求参数
     if (!message || !model) {
@@ -33,12 +48,34 @@ export async function POST(req: NextRequest) {
       streaming: true,
     });
 
-    // 创建消息
-    const messages = [new HumanMessage(message)];
-    console.log("开始流式响应...");
+    // 准备上下文消息
+    const truncatedContext = prepareContextMessages(
+      contextMessages,
+      model as ModelProvider
+    );
+    const contextStats = getContextStats(
+      truncatedContext,
+      DEFAULT_CONTEXT_CONFIGS[model as ModelProvider]
+    );
+
+    console.log("上下文统计:", contextStats);
+
+    // 转换消息格式为LangChain格式
+    const langchainMessages = truncatedContext.map((msg) => {
+      if (msg.role === "user") {
+        return new HumanMessage(msg.content);
+      } else {
+        return new AIMessage(msg.content);
+      }
+    });
+
+    // 添加当前用户消息
+    langchainMessages.push(new HumanMessage(message));
+
+    console.log("开始流式响应...", { totalMessages: langchainMessages.length });
 
     // 创建流式响应
-    const stream = await chatModel.stream(messages);
+    const stream = await chatModel.stream(langchainMessages);
 
     // 创建可读流
     const readableStream = new ReadableStream({

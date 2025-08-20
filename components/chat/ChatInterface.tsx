@@ -1,10 +1,20 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Session, ModelProvider } from "@/lib/types";
+import {
+  Session,
+  ModelProvider,
+  PromptTemplate,
+  TemplateContext,
+} from "@/lib/types";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
+import { ChatAreaInput } from "./ChatAreaInput";
+import { ContextStatus } from "./ContextStatus";
 import { Sidebar } from "../sidebar/Sidebar";
+import { TemplateSelector } from "../templates/TemplateSelector";
+import { TemplateApplicator } from "../templates/TemplateApplicator";
+import { TemplateManager } from "../templates/TemplateManager";
 import {
   getSessions,
   createSession,
@@ -31,6 +41,13 @@ export function ChatInterface() {
     null
   );
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // 模板相关状态
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<PromptTemplate | null>(null);
+  const [showTemplateApplicator, setShowTemplateApplicator] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [templateContext, setTemplateContext] = useState<TemplateContext>({});
 
   // 创建新会话
   const handleNewSession = useCallback(() => {
@@ -136,7 +153,7 @@ export function ChatInterface() {
       setStreamingMessageId(assistantMessage.id);
 
       try {
-        // 发送请求到API
+        // 发送请求到API，包含历史消息上下文
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: {
@@ -146,6 +163,7 @@ export function ChatInterface() {
             message: content,
             sessionId: currentSession.id,
             model: selectedModel,
+            messages: currentSession.messages, // 发送历史消息作为上下文
           }),
         });
 
@@ -234,6 +252,51 @@ export function ChatInterface() {
     [currentSession, selectedModel, isLoading]
   );
 
+  // 清除当前会话的上下文（保留当前会话但清空消息）
+  const handleClearContext = useCallback(() => {
+    if (!currentSession) return;
+
+    if (confirm("确定要清除当前对话的上下文吗？这将删除所有历史消息。")) {
+      // 清空当前会话的消息
+      updateSession(currentSession.id, { messages: [] });
+
+      // 更新UI状态
+      setCurrentSessionState((prev) =>
+        prev ? { ...prev, messages: [] } : null
+      );
+      setSessions(getSessions());
+    }
+  }, [currentSession]);
+
+  // 处理模板选择
+  const handleSelectTemplate = useCallback(
+    (template: PromptTemplate) => {
+      setSelectedTemplate(template);
+      setTemplateContext({
+        history: currentSession?.messages || [],
+        variables: {},
+      });
+      setShowTemplateApplicator(true);
+    },
+    [currentSession]
+  );
+
+  // 处理模板应用
+  const handleApplyTemplate = useCallback(
+    (content: string) => {
+      // 直接发送模板生成的内容
+      handleSendMessage(content);
+      setShowTemplateApplicator(false);
+      setSelectedTemplate(null);
+    },
+    [handleSendMessage]
+  );
+
+  // 处理创建新模板
+  const handleCreateTemplate = useCallback(() => {
+    setShowTemplateManager(true);
+  }, []);
+
   // 导出会话
   const handleExportSessions = useCallback(() => {
     if (sessions.length === 0) return;
@@ -315,7 +378,49 @@ export function ChatInterface() {
               </div>
             )}
           </div>
+
+          {/* 模板工具 */}
+          <div className="flex items-center gap-2">
+            <TemplateSelector
+              onSelectTemplate={handleSelectTemplate}
+              onCreateTemplate={handleCreateTemplate}
+            />
+            <button
+              onClick={() => setShowTemplateManager(true)}
+              className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title="管理模板"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        {/* 上下文状态 */}
+        {currentSession && (
+          <ContextStatus
+            messages={currentSession.messages}
+            model={selectedModel}
+            onClearContext={handleClearContext}
+          />
+        )}
 
         {/* 消息列表 */}
         <MessageList
@@ -325,12 +430,36 @@ export function ChatInterface() {
         />
 
         {/* 消息输入 */}
-        <MessageInput
+        <ChatAreaInput
           onSendMessage={handleSendMessage}
-          disabled={isLoading}
-          placeholder={isLoading ? "AI正在思考中..." : "输入您的消息..."}
+          isLoading={isLoading}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
         />
       </div>
+
+      {/* 模板应用器 */}
+      {selectedTemplate && (
+        <TemplateApplicator
+          template={selectedTemplate}
+          context={{
+            ...templateContext,
+            input: "", // 可以从输入框获取当前输入
+          }}
+          isOpen={showTemplateApplicator}
+          onClose={() => {
+            setShowTemplateApplicator(false);
+            setSelectedTemplate(null);
+          }}
+          onApply={handleApplyTemplate}
+        />
+      )}
+
+      {/* 模板管理器 */}
+      <TemplateManager
+        isOpen={showTemplateManager}
+        onClose={() => setShowTemplateManager(false)}
+      />
     </div>
   );
 }
