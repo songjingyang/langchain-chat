@@ -1,12 +1,16 @@
 import { NextRequest } from "next/server";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { createChatModel, MODEL_CONFIGS } from "@/lib/langchain/models";
-import { ChatRequest, ModelProvider, Message } from "@/lib/types";
+import { ChatRequest, ModelProvider } from "@/lib/types";
 import {
   prepareContextMessages,
   getContextStats,
   DEFAULT_CONTEXT_CONFIGS,
 } from "@/lib/context/manager";
+import {
+  processMessageWithAttachments,
+  getAttachmentsSummary,
+} from "@/lib/ai/multimodal";
 
 export const runtime = "edge";
 
@@ -17,6 +21,7 @@ export async function POST(req: NextRequest) {
       message,
       model,
       messages: contextMessages = [],
+      attachments = [],
       temperature,
       maxTokens,
     } = body;
@@ -25,6 +30,9 @@ export async function POST(req: NextRequest) {
       model,
       messageLength: message?.length,
       contextMessages: contextMessages.length,
+      attachments: attachments.length,
+      attachmentsSummary:
+        attachments.length > 0 ? getAttachmentsSummary(attachments) : "none",
     });
 
     // 验证请求参数
@@ -69,8 +77,13 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // 添加当前用户消息
-    langchainMessages.push(new HumanMessage(message));
+    // 添加当前用户消息（支持多模态）
+    const currentMessage = processMessageWithAttachments(
+      message,
+      attachments,
+      model
+    );
+    langchainMessages.push(currentMessage);
 
     console.log("开始流式响应...", { totalMessages: langchainMessages.length });
 

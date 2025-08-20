@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "domain:setup": "node scripts/vercel-domain-setup.js",
+    "domain:verify": "node scripts/verify-domain.js",
+    "domain:shell": "./scripts/setup-domain.sh"
   },
   "dependencies": {
     "@langchain/core": "^0.3.72",

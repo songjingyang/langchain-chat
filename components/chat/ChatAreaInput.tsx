@@ -6,6 +6,16 @@ import { MentionPopup } from "./MentionPopup";
 import { CommandPopup, executeCommand } from "./CommandPopup";
 import { EmojiPicker } from "./EmojiPicker";
 import { FileUpload } from "./FileUpload";
+import { UnifiedUploadResult } from "@/lib/upload/service";
+import { createEnhancedMessageAttachment } from "@/lib/file/content-extractor";
+import { MessageAttachment } from "@/lib/types";
+import { TypewriterSettings } from "../ui/TypewriterSettings";
+import {
+  getUserPreferences,
+  TypewriterPreferences,
+} from "@/lib/ui/typewriter-config";
+import { VoiceInput } from "./VoiceInput";
+import { VoiceSettings } from "../ui/VoiceSettings";
 
 interface UploadedFile {
   id: string;
@@ -14,6 +24,8 @@ interface UploadedFile {
   status: "uploading" | "completed" | "error";
   error?: string;
   preview?: string;
+  uploadResult?: UnifiedUploadResult;
+  url?: string; // 上传成功后的访问URL
 }
 
 interface User {
@@ -35,7 +47,7 @@ interface Topic {
 }
 
 interface ChatAreaInputProps {
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, attachments?: MessageAttachment[]) => void;
   isLoading: boolean;
   selectedModel: ModelProvider;
   onModelChange: (model: ModelProvider) => void;
@@ -78,6 +90,15 @@ export function ChatAreaInput({
   // 文件上传状态
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+
+  // 打字机设置状态
+  const [showTypewriterSettings, setShowTypewriterSettings] = useState(false);
+  const [typewriterPreferences, setTypewriterPreferences] =
+    useState<TypewriterPreferences>(getUserPreferences());
+
+  // 语音输入状态
+  const [voiceLanguage, setVoiceLanguage] = useState("zh-CN");
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
   // 自动调整文本框高度
   const adjustTextareaHeight = useCallback(() => {
@@ -299,6 +320,112 @@ export function ChatAreaInput({
     setShowFileUpload(!showFileUpload);
   };
 
+  // 处理打字机设置按钮点击
+  const handleTypewriterSettingsClick = () => {
+    setShowTypewriterSettings(true);
+  };
+
+  // 处理打字机设置变更
+  const handleTypewriterSettingsChange = (
+    preferences: TypewriterPreferences
+  ) => {
+    setTypewriterPreferences(preferences);
+  };
+
+  // 处理语音输入 - 最终确认的文本
+  const handleVoiceTranscript = useCallback(
+    (transcript: string) => {
+      if (transcript.trim()) {
+        // 将语音转录的文本添加到输入框
+        setContent((prev) => {
+          const newContent = prev ? `${prev} ${transcript}` : transcript;
+          return newContent;
+        });
+
+        // 自动调整文本框高度
+        setTimeout(() => {
+          adjustTextareaHeight();
+        }, 0);
+      }
+    },
+    [adjustTextareaHeight]
+  );
+
+  // 处理实时语音转录更新
+  const handleVoiceTranscriptUpdate = useCallback(
+    (interim: string, final: string) => {
+      // 使用函数式更新避免依赖content状态
+      setContent((prevContent) => {
+        // 移除之前的临时标记
+        const baseContent = prevContent.replace(
+          /\s*\[语音识别中\.\.\.\].*$/,
+          ""
+        );
+
+        if (interim.trim()) {
+          // 显示临时识别结果
+          return `${baseContent} [语音识别中...] ${interim}`;
+        } else if (final.trim()) {
+          // 显示最终结果
+          return baseContent;
+        }
+
+        return prevContent;
+      });
+
+      // 自动调整文本框高度
+      setTimeout(() => {
+        adjustTextareaHeight();
+      }, 0);
+    },
+    [adjustTextareaHeight]
+  );
+
+  // 处理语音输入错误
+  const handleVoiceError = useCallback((error: string) => {
+    console.error("语音输入错误:", error);
+    // 这里可以显示错误提示
+  }, []);
+
+  // 处理语音设置
+  const handleVoiceSettingsClick = () => {
+    setShowVoiceSettings(true);
+  };
+
+  const handleVoiceLanguageChange = (language: string) => {
+    setVoiceLanguage(language);
+  };
+
+  // 处理文件发送到聊天
+  const handleFileSend = async (file: UploadedFile) => {
+    if (file.url) {
+      try {
+        // 创建包含文件内容的附件对象
+        const attachment = await createEnhancedMessageAttachment(
+          file.file,
+          file.url
+        );
+
+        // 构建消息内容
+        const fileMessage = `我上传了一个${
+          attachment.type === "image" ? "图片" : "文件"
+        }：${file.file.name}`;
+
+        // 发送消息和附件
+        onSendMessage(fileMessage, [attachment]);
+
+        // 发送后从上传列表中移除
+        setUploadedFiles((files) => files.filter((f) => f.id !== file.id));
+      } catch (error) {
+        console.error("处理文件发送失败:", error);
+        // 降级处理：只发送文件链接
+        const fileMessage = `[文件] ${file.file.name}\n${file.url}`;
+        onSendMessage(fileMessage);
+        setUploadedFiles((files) => files.filter((f) => f.id !== file.id));
+      }
+    }
+  };
+
   // 监听内容变化以调整高度
   useEffect(() => {
     adjustTextareaHeight();
@@ -418,6 +545,57 @@ export function ChatAreaInput({
                   />
                 </svg>
               </button>
+
+              {/* 语音输入按钮 */}
+              <VoiceInput
+                onTranscript={handleVoiceTranscript}
+                onTranscriptUpdate={handleVoiceTranscriptUpdate}
+                onError={handleVoiceError}
+                language={voiceLanguage}
+                disabled={isLoading}
+                className="flex-shrink-0"
+              />
+
+              {/* 语音设置按钮 */}
+              <button
+                onClick={handleVoiceSettingsClick}
+                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                title="语音输入设置"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                  />
+                </svg>
+              </button>
+
+              <button
+                onClick={handleTypewriterSettingsClick}
+                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                title="打字机效果设置"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
+                  />
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -526,6 +704,7 @@ export function ChatAreaInput({
                   files.filter((f) => f.id !== fileId)
                 );
               }}
+              onFileSend={handleFileSend}
               uploadedFiles={uploadedFiles}
             />
           </div>
@@ -561,6 +740,21 @@ export function ChatAreaInput({
         onSelect={handleEmojiSelect}
         onClose={() => setShowEmojiPicker(false)}
         position={emojiPickerPosition}
+      />
+
+      {/* 打字机设置 */}
+      <TypewriterSettings
+        isOpen={showTypewriterSettings}
+        onClose={() => setShowTypewriterSettings(false)}
+        onSettingsChange={handleTypewriterSettingsChange}
+      />
+
+      {/* 语音设置 */}
+      <VoiceSettings
+        isOpen={showVoiceSettings}
+        onClose={() => setShowVoiceSettings(false)}
+        currentLanguage={voiceLanguage}
+        onLanguageChange={handleVoiceLanguageChange}
       />
     </div>
   );

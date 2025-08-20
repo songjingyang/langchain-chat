@@ -5,6 +5,7 @@ import { Message } from "@/lib/types";
 import { formatMessageTime } from "@/lib/storage/messages";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { TypewriterText } from "./TypewriterText";
+import { AttachmentDisplay } from "./AttachmentDisplay";
 
 interface MessageItemProps {
   message: Message;
@@ -79,15 +80,25 @@ export function MessageItem({
             </div>
           ) : // AI消息使用Markdown渲染和打字机效果
           isStreaming ? (
-            <TypewriterText
-              text={message.content}
-              speed={20}
-              isStreaming={true}
-            />
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <TypewriterText
+                text={message.content}
+                speed={50} // 调整为更合适的速度
+                isStreaming={true}
+                className="text-gray-700 dark:text-gray-300 leading-relaxed"
+              />
+            </div>
           ) : (
             <MarkdownRenderer content={message.content} isStreaming={false} />
           )}
         </div>
+
+        {/* 附件显示 */}
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="mt-3">
+            <AttachmentDisplay attachments={message.attachments} />
+          </div>
+        )}
 
         {/* 操作按钮 */}
         <div className="flex items-center gap-2 mt-3">

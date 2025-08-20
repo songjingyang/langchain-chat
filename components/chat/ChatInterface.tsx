@@ -29,6 +29,7 @@ import {
   createUserMessage,
   createAssistantMessage,
 } from "@/lib/storage/messages";
+import { MessageAttachment } from "@/lib/types";
 
 export function ChatInterface() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -133,13 +134,13 @@ export function ChatInterface() {
 
   // 发送消息
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, attachments?: MessageAttachment[]) => {
       if (!currentSession || isLoading) return;
 
       setIsLoading(true);
 
-      // 创建用户消息
-      const userMessage = createUserMessage(content);
+      // 创建用户消息（包含附件）
+      const userMessage = createUserMessage(content, attachments);
       addMessageToSession(currentSession.id, userMessage);
 
       // 更新UI
@@ -153,7 +154,7 @@ export function ChatInterface() {
       setStreamingMessageId(assistantMessage.id);
 
       try {
-        // 发送请求到API，包含历史消息上下文
+        // 发送请求到API，包含历史消息上下文和附件
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: {
@@ -164,6 +165,7 @@ export function ChatInterface() {
             sessionId: currentSession.id,
             model: selectedModel,
             messages: currentSession.messages, // 发送历史消息作为上下文
+            attachments: attachments, // 发送当前消息的附件
           }),
         });
 

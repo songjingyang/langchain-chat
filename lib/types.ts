@@ -1,3 +1,19 @@
+// 附件数据类型
+export interface MessageAttachment {
+  id: string;
+  name: string;
+  type: "image" | "document" | "video" | "audio";
+  url: string;
+  size: number;
+  mimeType: string;
+  // 文件内容数据（用于AI分析）
+  content?: {
+    base64?: string; // 图片的base64编码
+    text?: string; // 文档的文本内容
+    metadata?: Record<string, unknown>; // 其他元数据
+  };
+}
+
 // 消息类型定义
 export interface Message {
   id: string;
@@ -5,6 +21,7 @@ export interface Message {
   role: "user" | "assistant";
   timestamp: Date;
   model?: string;
+  attachments?: MessageAttachment[]; // 附件列表
 }
 
 // 会话类型定义
@@ -36,6 +53,7 @@ export interface ChatRequest {
   sessionId: string;
   model: ModelProvider;
   messages?: Message[]; // 历史消息上下文
+  attachments?: MessageAttachment[]; // 当前消息的附件
   temperature?: number;
   maxTokens?: number;
 }
