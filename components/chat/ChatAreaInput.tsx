@@ -14,8 +14,7 @@ import {
   getUserPreferences,
   TypewriterPreferences,
 } from "@/lib/ui/typewriter-config";
-import { VoiceInput } from "./VoiceInput";
-import { VoiceSettings } from "../ui/VoiceSettings";
+import { PromptOptimizer } from "./PromptOptimizer";
 
 interface UploadedFile {
   id: string;
@@ -95,10 +94,6 @@ export function ChatAreaInput({
   const [showTypewriterSettings, setShowTypewriterSettings] = useState(false);
   const [typewriterPreferences, setTypewriterPreferences] =
     useState<TypewriterPreferences>(getUserPreferences());
-
-  // 语音输入状态
-  const [voiceLanguage, setVoiceLanguage] = useState("zh-CN");
-  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
   // 自动调整文本框高度
   const adjustTextareaHeight = useCallback(() => {
@@ -332,46 +327,10 @@ export function ChatAreaInput({
     setTypewriterPreferences(preferences);
   };
 
-  // 处理语音输入 - 最终确认的文本
-  const handleVoiceTranscript = useCallback(
-    (transcript: string) => {
-      if (transcript.trim()) {
-        // 将语音转录的文本添加到输入框
-        setContent((prev) => {
-          const newContent = prev ? `${prev} ${transcript}` : transcript;
-          return newContent;
-        });
-
-        // 自动调整文本框高度
-        setTimeout(() => {
-          adjustTextareaHeight();
-        }, 0);
-      }
-    },
-    [adjustTextareaHeight]
-  );
-
-  // 处理实时语音转录更新
-  const handleVoiceTranscriptUpdate = useCallback(
-    (interim: string, final: string) => {
-      // 使用函数式更新避免依赖content状态
-      setContent((prevContent) => {
-        // 移除之前的临时标记
-        const baseContent = prevContent.replace(
-          /\s*\[语音识别中\.\.\.\].*$/,
-          ""
-        );
-
-        if (interim.trim()) {
-          // 显示临时识别结果
-          return `${baseContent} [语音识别中...] ${interim}`;
-        } else if (final.trim()) {
-          // 显示最终结果
-          return baseContent;
-        }
-
-        return prevContent;
-      });
+  // 处理提示词优化
+  const handlePromptOptimized = useCallback(
+    (optimizedContent: string) => {
+      setContent(optimizedContent);
 
       // 自动调整文本框高度
       setTimeout(() => {
@@ -381,20 +340,11 @@ export function ChatAreaInput({
     [adjustTextareaHeight]
   );
 
-  // 处理语音输入错误
-  const handleVoiceError = useCallback((error: string) => {
-    console.error("语音输入错误:", error);
-    // 这里可以显示错误提示
+  // 处理提示词优化错误
+  const handlePromptOptimizeError = useCallback((error: string) => {
+    console.error("提示词优化错误:", error);
+    // 这里可以显示错误提示，暂时使用console.error
   }, []);
-
-  // 处理语音设置
-  const handleVoiceSettingsClick = () => {
-    setShowVoiceSettings(true);
-  };
-
-  const handleVoiceLanguageChange = (language: string) => {
-    setVoiceLanguage(language);
-  };
 
   // 处理文件发送到聊天
   const handleFileSend = async (file: UploadedFile) => {
@@ -507,6 +457,14 @@ export function ChatAreaInput({
 
             {/* 右侧工具 */}
             <div className="flex items-center gap-2">
+              {/* 提示词优化按钮 */}
+              <PromptOptimizer
+                content={content}
+                onOptimized={handlePromptOptimized}
+                onError={handlePromptOptimizeError}
+                disabled={isLoading}
+              />
+
               <button
                 onClick={handleEmojiButtonClick}
                 className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
@@ -526,6 +484,7 @@ export function ChatAreaInput({
                   />
                 </svg>
               </button>
+
               <button
                 onClick={handleFileButtonClick}
                 className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
@@ -542,37 +501,6 @@ export function ChatAreaInput({
                     strokeLinejoin="round"
                     strokeWidth={2}
                     d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                  />
-                </svg>
-              </button>
-
-              {/* 语音输入按钮 */}
-              <VoiceInput
-                onTranscript={handleVoiceTranscript}
-                onTranscriptUpdate={handleVoiceTranscriptUpdate}
-                onError={handleVoiceError}
-                language={voiceLanguage}
-                disabled={isLoading}
-                className="flex-shrink-0"
-              />
-
-              {/* 语音设置按钮 */}
-              <button
-                onClick={handleVoiceSettingsClick}
-                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                title="语音输入设置"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
                   />
                 </svg>
               </button>
@@ -747,14 +675,6 @@ export function ChatAreaInput({
         isOpen={showTypewriterSettings}
         onClose={() => setShowTypewriterSettings(false)}
         onSettingsChange={handleTypewriterSettingsChange}
-      />
-
-      {/* 语音设置 */}
-      <VoiceSettings
-        isOpen={showVoiceSettings}
-        onClose={() => setShowVoiceSettings(false)}
-        currentLanguage={voiceLanguage}
-        onLanguageChange={handleVoiceLanguageChange}
       />
     </div>
   );
