@@ -15,6 +15,7 @@ import {
   TypewriterPreferences,
 } from "@/lib/ui/typewriter-config";
 import { PromptOptimizer } from "./PromptOptimizer";
+import { MediaGenerator } from "./MediaGenerator";
 
 interface UploadedFile {
   id: string;
@@ -346,6 +347,46 @@ export function ChatAreaInput({
     // 这里可以显示错误提示，暂时使用console.error
   }, []);
 
+  // 处理媒体生成
+  const handleMediaGenerated = useCallback(
+    (mediaUrl: string, type: "image" | "video") => {
+      // 构建消息内容
+      const mediaMessage = `我生成了一个${
+        type === "image" ? "图片" : "视频"
+      }：\n${content}`;
+
+      // 创建媒体附件对象
+      const mediaAttachment: MessageAttachment = {
+        id: `generated-${type}-${Date.now()}`,
+        type: type === "image" ? "image" : "video",
+        name: `generated-${type}.${type === "image" ? "png" : "mp4"}`,
+        size: 0, // 无法确定base64大小
+        url: mediaUrl,
+        mimeType: type === "image" ? "image/png" : "video/mp4",
+        content: "", // base64数据已包含在url中
+      };
+
+      // 发送消息和附件
+      onSendMessage(mediaMessage, [mediaAttachment]);
+
+      // 清空输入框
+      setContent("");
+      setTimeout(() => {
+        setTextareaHeight(56);
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "56px";
+        }
+      }, 0);
+    },
+    [content, onSendMessage]
+  );
+
+  // 处理媒体生成错误
+  const handleMediaGenerateError = useCallback((error: string) => {
+    console.error("媒体生成错误:", error);
+    // 这里可以显示错误提示，暂时使用console.error
+  }, []);
+
   // 处理文件发送到聊天
   const handleFileSend = async (file: UploadedFile) => {
     if (file.url) {
@@ -457,6 +498,14 @@ export function ChatAreaInput({
 
             {/* 右侧工具 */}
             <div className="flex items-center gap-2">
+              {/* 媒体生成按钮 */}
+              <MediaGenerator
+                content={content}
+                onGenerated={handleMediaGenerated}
+                onError={handleMediaGenerateError}
+                disabled={isLoading}
+              />
+
               {/* 提示词优化按钮 */}
               <PromptOptimizer
                 content={content}
