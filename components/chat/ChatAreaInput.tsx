@@ -350,21 +350,53 @@ export function ChatAreaInput({
   // 处理媒体生成
   const handleMediaGenerated = useCallback(
     (mediaUrl: string, type: "image" | "video") => {
-      // 构建消息内容
-      const mediaMessage = `我生成了一个${
-        type === "image" ? "图片" : "视频"
-      }：\n${content}`;
+      // 构建消息内容 - 使用特殊格式避免触发不当的AI响应
+      const mediaMessage = `[已完成] ${content}`;
+
+      // 从 data URL 中提取 MIME 类型和 base64 数据
+      let extractedMimeType = type === "image" ? "image/png" : "video/mp4";
+      let base64Data = "";
+
+      if (type === "image" && mediaUrl.startsWith("data:")) {
+        const parts = mediaUrl.split(",");
+        if (parts.length === 2) {
+          const headerPart = parts[0]; // data:image/jpeg;base64
+          base64Data = parts[1];
+
+          // 提取 MIME 类型
+          const mimeMatch = headerPart.match(/data:([^;]+)/);
+          if (mimeMatch) {
+            extractedMimeType = mimeMatch[1];
+          }
+        }
+      }
 
       // 创建媒体附件对象
       const mediaAttachment: MessageAttachment = {
         id: `generated-${type}-${Date.now()}`,
         type: type === "image" ? "image" : "video",
-        name: `generated-${type}.${type === "image" ? "png" : "mp4"}`,
+        name: `generated-${type}.${
+          extractedMimeType === "image/jpeg" ? "jpg" : "png"
+        }`,
         size: 0, // 无法确定base64大小
         url: mediaUrl,
-        mimeType: type === "image" ? "image/png" : "video/mp4",
-        content: "", // base64数据已包含在url中
+        mimeType: extractedMimeType,
+        content:
+          type === "image"
+            ? {
+                base64: base64Data,
+              }
+            : undefined,
       };
+
+      // 调试信息
+      console.log("📸 生成的媒体附件信息:", {
+        mimeType: extractedMimeType,
+        hasBase64: !!base64Data,
+        base64Length: base64Data.length,
+        urlPrefix: mediaUrl.substring(0, 50),
+        attachmentId: mediaAttachment.id,
+      });
 
       // 发送消息和附件
       onSendMessage(mediaMessage, [mediaAttachment]);

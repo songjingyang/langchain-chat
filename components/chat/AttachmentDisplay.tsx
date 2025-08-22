@@ -102,31 +102,56 @@ export function AttachmentDisplay({
           </div>
 
           {/* 附件内容预览 */}
-          {attachment.type === "image" && attachment.content?.base64 && (
-            <div className="p-3">
-              <div className="relative">
-                <img
-                  src={`data:${attachment.mimeType};base64,${attachment.content.base64}`}
-                  alt={attachment.name}
-                  className={`rounded-lg transition-all duration-200 cursor-pointer ${
-                    expandedImages.has(attachment.id)
-                      ? "max-w-full max-h-none"
-                      : "max-w-sm max-h-64 object-cover"
-                  }`}
-                  onClick={() => toggleImageExpansion(attachment.id)}
-                />
-                {!expandedImages.has(attachment.id) && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-10 transition-all duration-200 rounded-lg">
-                    <div className="opacity-0 hover:opacity-100 transition-opacity duration-200">
-                      <div className="bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
-                        点击查看大图
+          {attachment.type === "image" &&
+            (attachment.content?.base64 ||
+              attachment.url?.startsWith("data:image/")) && (
+              <div className="p-3">
+                <div className="relative">
+                  <img
+                    src={
+                      attachment.content?.base64
+                        ? `data:${attachment.mimeType};base64,${attachment.content.base64}`
+                        : attachment.url || ""
+                    }
+                    alt={attachment.name}
+                    className={`rounded-lg transition-all duration-200 cursor-pointer ${
+                      expandedImages.has(attachment.id)
+                        ? "max-w-full max-h-none"
+                        : "max-w-sm max-h-64 object-cover"
+                    }`}
+                    onClick={() => toggleImageExpansion(attachment.id)}
+                    onError={(e) => {
+                      console.error("❌ 图像加载失败:", attachment.name, {
+                        src: e.currentTarget.src.substring(0, 100) + "...",
+                        hasBase64: !!attachment.content?.base64,
+                        base64Length: attachment.content?.base64?.length || 0,
+                        hasUrl: !!attachment.url,
+                        mimeType: attachment.mimeType,
+                        naturalWidth: e.currentTarget.naturalWidth,
+                        naturalHeight: e.currentTarget.naturalHeight,
+                      });
+                    }}
+                    onLoad={(e) => {
+                      console.log("✅ 图像加载成功:", attachment.name, {
+                        naturalWidth: e.currentTarget.naturalWidth,
+                        naturalHeight: e.currentTarget.naturalHeight,
+                        mimeType: attachment.mimeType,
+                        base64Length: attachment.content?.base64?.length || 0,
+                      });
+                    }}
+                  />
+                  {!expandedImages.has(attachment.id) && (
+                    <div className="absolute inset-0 flex items-center justify-center hover:bg-white hover:bg-opacity-10 transition-all duration-200 rounded-lg pointer-events-none">
+                      <div className="opacity-0 hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                        <div className="bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+                          点击查看大图
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* 文档内容预览 */}
           {attachment.type === "document" && attachment.content?.text && (

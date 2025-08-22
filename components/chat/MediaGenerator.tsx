@@ -44,7 +44,7 @@ export function MediaGenerator({
     setState({
       isGenerating: true,
       type: "image",
-      progress: "正在生成图像...",
+      progress: "正在使用免费AI生成图像...",
     });
 
     try {
@@ -57,6 +57,7 @@ export function MediaGenerator({
           prompt: content,
           width: 1024,
           height: 1024,
+          model: "pollinations", // 使用免费的Pollinations AI
         }),
       });
 
