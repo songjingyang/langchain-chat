@@ -123,6 +123,17 @@ export function MediaGenerator({
       }
 
       const result = await response.json();
+
+      // 检查返回的媒体类型信息
+      console.log("🎬 视频生成结果:", {
+        format: result.format,
+        mimeType: result.mimeType,
+        isAnimated: result.isAnimated,
+        frames: result.frames,
+        service: result.service,
+        note: result.note,
+      });
+
       onGenerated(result.videoUrl, "video");
       setState({
         isGenerating: false,

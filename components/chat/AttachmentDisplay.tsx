@@ -140,7 +140,7 @@ export function AttachmentDisplay({
                       });
                     }}
                   />
-                  {!expandedImages.has(attachment.id) && (
+                  {/* {!expandedImages.has(attachment.id) && (
                     <div className="absolute inset-0 flex items-center justify-center hover:bg-white hover:bg-opacity-10 transition-all duration-200 rounded-lg pointer-events-none">
                       <div className="opacity-0 hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
                         <div className="bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
@@ -148,7 +148,7 @@ export function AttachmentDisplay({
                         </div>
                       </div>
                     </div>
-                  )}
+                  )} */}
                 </div>
               </div>
             )}
@@ -174,18 +174,139 @@ export function AttachmentDisplay({
             </div>
           )}
 
+          {/* 视频内容预览 */}
+          {attachment.type === "video" && attachment.url && (
+            <div className="p-3">
+              <div className="relative">
+                {/* 对于真实的视频文件使用video标签 */}
+                {attachment.mimeType?.startsWith("video/") ? (
+                  <div className="bg-black rounded-lg overflow-hidden">
+                    <video
+                      src={attachment.url}
+                      controls
+                      preload="metadata"
+                      className="w-full max-h-96 object-contain"
+                      onError={(e) => {
+                        console.error("❌ 视频加载失败:", attachment.name, {
+                          src: e.currentTarget.src.substring(0, 100) + "...",
+                          hasUrl: !!attachment.url,
+                          mimeType: attachment.mimeType,
+                        });
+                      }}
+                      onLoadedMetadata={(e) => {
+                        console.log("✅ 视频元数据加载成功:", attachment.name, {
+                          duration: e.currentTarget.duration,
+                          videoWidth: e.currentTarget.videoWidth,
+                          videoHeight: e.currentTarget.videoHeight,
+                          mimeType: attachment.mimeType,
+                        });
+                      }}
+                    >
+                      您的浏览器不支持视频播放。
+                      <a
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:underline"
+                      >
+                        请点击此处查看视频
+                      </a>
+                    </video>
+
+                    {/* 视频信息覆盖层 */}
+                    <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+                      🎥 视频文件
+                    </div>
+                  </div>
+                ) : (
+                  /* 对于GIF或被标记为video类型的图像，使用img标签 */
+                  <div className="rounded-lg overflow-hidden">
+                    <img
+                      src={
+                        attachment.content?.base64
+                          ? `data:${attachment.mimeType};base64,${attachment.content.base64}`
+                          : attachment.url || ""
+                      }
+                      alt={attachment.name}
+                      className={`rounded-lg transition-all duration-200 cursor-pointer ${
+                        expandedImages.has(attachment.id)
+                          ? "max-w-full max-h-none"
+                          : "max-w-sm max-h-64 object-cover"
+                      }`}
+                      onClick={() => toggleImageExpansion(attachment.id)}
+                      onError={(e) => {
+                        console.error("❌ 动画图像加载失败:", attachment.name, {
+                          src: e.currentTarget.src.substring(0, 100) + "...",
+                          hasBase64: !!attachment.content?.base64,
+                          base64Length: attachment.content?.base64?.length || 0,
+                          hasUrl: !!attachment.url,
+                          mimeType: attachment.mimeType,
+                        });
+                      }}
+                      onLoad={(e) => {
+                        console.log("✅ 动画图像加载成功:", attachment.name, {
+                          naturalWidth: e.currentTarget.naturalWidth,
+                          naturalHeight: e.currentTarget.naturalHeight,
+                          mimeType: attachment.mimeType,
+                          base64Length: attachment.content?.base64?.length || 0,
+                        });
+                      }}
+                    />
+
+                    {/* 动画标识覆盖层 */}
+                    <div className="absolute top-2 left-2 bg-blue-500 bg-opacity-75 text-white px-2 py-1 rounded text-xs">
+                      🎬{" "}
+                      {attachment.mimeType?.includes("gif")
+                        ? "GIF动画"
+                        : "动画图像"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 音频内容预览 */}
+          {attachment.type === "audio" && attachment.url && (
+            <div className="p-3">
+              <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
+                <audio
+                  src={attachment.url}
+                  controls
+                  preload="metadata"
+                  className="w-full"
+                  onError={(e) => {
+                    console.error("❌ 音频加载失败:", attachment.name, {
+                      src: e.currentTarget.src.substring(0, 100) + "...",
+                      hasUrl: !!attachment.url,
+                      mimeType: attachment.mimeType,
+                    });
+                  }}
+                >
+                  您的浏览器不支持音频播放。
+                  <a
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    请点击此处查看音频文件
+                  </a>
+                </audio>
+              </div>
+            </div>
+          )}
+
           {/* 其他文件类型的占位符 */}
-          {attachment.type !== "image" && attachment.type !== "document" && (
+          {!["image", "document", "video", "audio"].includes(
+            attachment.type
+          ) && (
             <div className="p-3">
               <div className="text-center text-gray-500 dark:text-gray-400 py-4">
                 <div className="text-2xl mb-2">
                   {getFileIcon(attachment.type)}
                 </div>
-                <div className="text-sm">
-                  {attachment.type === "video" && "视频文件"}
-                  {attachment.type === "audio" && "音频文件"}
-                  {!["video", "audio"].includes(attachment.type) && "文件"}
-                </div>
+                <div className="text-sm">文件</div>
                 <div className="text-xs mt-1">点击上方链接查看文件内容</div>
               </div>
             </div>

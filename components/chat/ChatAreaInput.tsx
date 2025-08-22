@@ -354,19 +354,39 @@ export function ChatAreaInput({
       const mediaMessage = `[已完成] ${content}`;
 
       // 从 data URL 中提取 MIME 类型和 base64 数据
-      let extractedMimeType = type === "image" ? "image/png" : "video/mp4";
+      let extractedMimeType = "image/png"; // 默认类型
       let base64Data = "";
+      let fileExtension = "png";
+      let actualType: "image" | "video" = "image"; // 根据实际MIME类型确定
 
-      if (type === "image" && mediaUrl.startsWith("data:")) {
+      if (mediaUrl.startsWith("data:")) {
         const parts = mediaUrl.split(",");
         if (parts.length === 2) {
-          const headerPart = parts[0]; // data:image/jpeg;base64
+          const headerPart = parts[0]; // data:image/jpeg;base64 或 data:image/gif;base64
           base64Data = parts[1];
 
           // 提取 MIME 类型
           const mimeMatch = headerPart.match(/data:([^;]+)/);
           if (mimeMatch) {
             extractedMimeType = mimeMatch[1];
+
+            // 根据实际MIME类型确定附件类型和文件扩展名
+            if (extractedMimeType === "image/gif") {
+              fileExtension = "gif";
+              actualType = "video"; // GIF被视为视频类型进行播放
+            } else if (extractedMimeType === "image/jpeg") {
+              fileExtension = "jpg";
+              actualType = "image";
+            } else if (extractedMimeType === "image/png") {
+              fileExtension = "png";
+              actualType = "image";
+            } else if (extractedMimeType === "video/mp4") {
+              fileExtension = "mp4";
+              actualType = "video";
+            } else if (extractedMimeType === "video/webm") {
+              fileExtension = "webm";
+              actualType = "video";
+            }
           }
         }
       }
@@ -374,28 +394,36 @@ export function ChatAreaInput({
       // 创建媒体附件对象
       const mediaAttachment: MessageAttachment = {
         id: `generated-${type}-${Date.now()}`,
-        type: type === "image" ? "image" : "video",
-        name: `generated-${type}.${
-          extractedMimeType === "image/jpeg" ? "jpg" : "png"
-        }`,
-        size: 0, // 无法确定base64大小
+        type: actualType, // 使用根据MIME类型确定的实际类型
+        name: `generated-${type}.${fileExtension}`,
+        size: base64Data ? Math.ceil(base64Data.length * 0.75) : 0, // 估算base64的实际大小
         url: mediaUrl,
         mimeType: extractedMimeType,
-        content:
-          type === "image"
-            ? {
-                base64: base64Data,
-              }
-            : undefined,
+        content: {
+          base64: base64Data || undefined,
+          metadata: {
+            generated: true,
+            prompt: content,
+            timestamp: new Date().toISOString(),
+            format: extractedMimeType,
+            originalRequestType: type, // 记录原始请求类型
+          },
+        },
       };
 
       // 调试信息
-      console.log("📸 生成的媒体附件信息:", {
+      console.log(`📸 生成的${type === "video" ? "视频" : "图像"}附件信息:`, {
+        requestType: type,
+        actualType: actualType,
         mimeType: extractedMimeType,
+        fileName: mediaAttachment.name,
         hasBase64: !!base64Data,
         base64Length: base64Data.length,
+        estimatedSize: mediaAttachment.size,
         urlPrefix: mediaUrl.substring(0, 50),
         attachmentId: mediaAttachment.id,
+        isGif: extractedMimeType === "image/gif",
+        willDisplayAs: actualType === "video" ? "视频播放器" : "图像",
       });
 
       // 发送消息和附件
