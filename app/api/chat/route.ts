@@ -10,6 +10,7 @@ import {
 import {
   processMessageWithAttachments,
   getAttachmentsSummary,
+  debugMultimodalSupport,
 } from "@/lib/ai/multimodal";
 
 export const runtime = "edge";
@@ -77,7 +78,23 @@ export async function POST(req: NextRequest) {
       }
     });
 
+    // 调试多模态支持
+    debugMultimodalSupport(model);
+
     // 添加当前用户消息（支持多模态）
+    console.log("🔍 处理多模态消息:", {
+      model,
+      messageText: message,
+      attachmentCount: attachments.length,
+      attachmentDetails: attachments.map((att) => ({
+        name: att.name,
+        type: att.type,
+        hasBase64: !!att.content?.base64,
+        base64Length: att.content?.base64?.length || 0,
+        mimeType: att.mimeType,
+      })),
+    });
+
     const currentMessage = processMessageWithAttachments(
       message,
       attachments,
@@ -85,7 +102,18 @@ export async function POST(req: NextRequest) {
     );
     langchainMessages.push(currentMessage);
 
-    console.log("开始流式响应...", { totalMessages: langchainMessages.length });
+    console.log("📝 最终消息内容:", {
+      totalMessages: langchainMessages.length,
+      currentMessageType: typeof currentMessage.content,
+      currentMessageContent:
+        typeof currentMessage.content === "string"
+          ? currentMessage.content.substring(0, 200) + "..."
+          : `Array with ${
+              Array.isArray(currentMessage.content)
+                ? currentMessage.content.length
+                : 0
+            } items`,
+    });
 
     // 创建流式响应
     const stream = await chatModel.stream(langchainMessages);
@@ -138,6 +166,13 @@ export async function POST(req: NextRequest) {
               errorMessage = `${model} API调用频率限制，请稍后重试`;
             } else if (error.message.includes("timeout")) {
               errorMessage = `${model} API请求超时，请重试`;
+            } else if (
+              error.message.includes("multimodal") ||
+              error.message.includes("image")
+            ) {
+              errorMessage = `${model} 图片处理失败，请检查图片格式或尝试其他模型`;
+            } else if (error.message.includes("base64")) {
+              errorMessage = "图片数据格式错误，请重新上传图片";
             }
           }
 

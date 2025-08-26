@@ -8,8 +8,8 @@ import { ModelProvider, ModelConfig } from "../types";
 export const MODEL_CONFIGS: Record<ModelProvider, ModelConfig> = {
   openai: {
     provider: "openai",
-    name: "gpt-4o-mini",
-    displayName: "GPT-4o Mini",
+    name: "gpt-4o-mini", // 支持多模态
+    displayName: "GPT-4o Mini (支持图片)",
     maxTokens: 4096,
     temperature: 0.7,
     streaming: true,
@@ -24,8 +24,8 @@ export const MODEL_CONFIGS: Record<ModelProvider, ModelConfig> = {
   },
   google: {
     provider: "google",
-    name: "gemini-1.5-flash",
-    displayName: "Gemini 1.5 Flash",
+    name: "gemini-1.5-flash", // 支持多模态
+    displayName: "Gemini 1.5 Flash (支持图片)",
     maxTokens: 8192,
     temperature: 0.7,
     streaming: true,

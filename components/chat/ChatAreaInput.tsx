@@ -6,9 +6,10 @@ import { MentionPopup } from "./MentionPopup";
 import { CommandPopup, executeCommand } from "./CommandPopup";
 import { EmojiPicker } from "./EmojiPicker";
 import { FileUpload } from "./FileUpload";
-import { UnifiedUploadResult } from "@/lib/upload/service";
+import { UnifiedUploadResult, uploadService } from "@/lib/upload/service";
 import { createEnhancedMessageAttachment } from "@/lib/file/content-extractor";
 import { MessageAttachment } from "@/lib/types";
+import { validateFile } from "@/lib/chat/mockData";
 import { TypewriterSettings } from "../ui/TypewriterSettings";
 import {
   getUserPreferences,
@@ -90,6 +91,8 @@ export function ChatAreaInput({
   // 文件上传状态
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
 
   // 打字机设置状态
   const [showTypewriterSettings, setShowTypewriterSettings] = useState(false);
@@ -266,20 +269,65 @@ export function ChatAreaInput({
   };
 
   // 处理发送消息
-  const handleSendMessage = useCallback(() => {
-    if (!content.trim() || isLoading || isComposing) return;
+  const handleSendMessage = useCallback(async () => {
+    if (
+      (!content.trim() && uploadedFiles.length === 0) ||
+      isLoading ||
+      isComposing
+    )
+      return;
 
-    onSendMessage(content.trim());
-    setContent("");
-    setUploadedFiles([]);
+    try {
+      // 如果有上传的文件，需要转换为附件格式
+      if (uploadedFiles.length > 0) {
+        const attachments: MessageAttachment[] = [];
 
-    setTimeout(() => {
-      setTextareaHeight(56);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "56px";
+        for (const file of uploadedFiles) {
+          if (file.status === "completed" && file.url) {
+            // 创建附件对象
+            const attachment = await createEnhancedMessageAttachment(
+              file.file,
+              file.url,
+              file.uploadResult
+            );
+            attachments.push(attachment);
+          }
+        }
+
+        // 发送带附件的消息
+        const messageText = content.trim() || ""; // 允许空文本但有图片
+        console.log("📤 发送带附件的消息:", {
+          textLength: messageText.length,
+          attachmentCount: attachments.length,
+          attachments: attachments.map((att) => ({
+            name: att.name,
+            type: att.type,
+            hasBase64: !!att.content?.base64,
+            size: Math.round(att.size / 1024) + "KB",
+          })),
+        });
+        onSendMessage(messageText, attachments);
+      } else {
+        // 普通文本消息
+        onSendMessage(content.trim());
       }
-    }, 0);
-  }, [content, isLoading, isComposing, onSendMessage]);
+
+      // 清空输入
+      setContent("");
+      setUploadedFiles([]);
+
+      setTimeout(() => {
+        setTextareaHeight(56);
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "56px";
+        }
+      }, 0);
+    } catch (error) {
+      console.error("发送消息失败:", error);
+      // TODO: 添加用户友好的错误提示
+      alert("发送消息失败，请重试");
+    }
+  }, [content, uploadedFiles, isLoading, isComposing, onSendMessage]);
 
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -314,6 +362,113 @@ export function ChatAreaInput({
   // 处理文件按钮点击
   const handleFileButtonClick = () => {
     setShowFileUpload(!showFileUpload);
+  };
+
+  // 拖拽处理函数
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter((prev) => prev + 1);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter((prev) => prev - 1);
+    if (dragCounter <= 1) {
+      setIsDraggingOver(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    setDragCounter(0);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      await handleFileUpload(files);
+    }
+  };
+
+  // 处理文件上传
+  const handleFileUpload = async (files: File[]) => {
+    for (const file of files) {
+      // 验证文件
+      const validation = validateFile(file, "image");
+      if (!validation.valid) {
+        console.error("文件验证失败:", validation.error);
+        continue;
+      }
+
+      // 创建预览
+      const preview = file.type.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : undefined;
+
+      const uploadedFile: UploadedFile = {
+        id: `upload-${Date.now()}-${Math.random()}`,
+        file,
+        progress: 0,
+        status: "uploading",
+        preview,
+      };
+
+      // 添加到上传列表
+      setUploadedFiles((prev) => [...prev, uploadedFile]);
+
+      try {
+        // 开始上传
+        const result = await uploadService.uploadFile(file, {
+          onProgress: (progress) => {
+            setUploadedFiles((prev) =>
+              prev.map((f) =>
+                f.id === uploadedFile.id
+                  ? { ...f, progress: progress.percentage }
+                  : f
+              )
+            );
+          },
+        });
+
+        // 上传成功
+        setUploadedFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadedFile.id
+              ? {
+                  ...f,
+                  status: "completed" as const,
+                  progress: 100,
+                  uploadResult: result,
+                  url: result.secure_url,
+                }
+              : f
+          )
+        );
+      } catch (error) {
+        console.error("文件上传失败:", error);
+        setUploadedFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadedFile.id
+              ? {
+                  ...f,
+                  status: "error" as const,
+                  error: error instanceof Error ? error.message : "上传失败",
+                }
+              : f
+          )
+        );
+      }
+    }
   };
 
   // 处理打字机设置按钮点击
@@ -514,8 +669,14 @@ export function ChatAreaInput({
           className={`relative bg-gray-50 dark:bg-gray-700 rounded-2xl border-2 transition-all duration-300 ${
             isFocused
               ? "border-blue-500 shadow-lg shadow-blue-500/10 bg-white dark:bg-gray-600"
+              : isDraggingOver
+              ? "border-blue-400 shadow-lg shadow-blue-400/20 bg-blue-50 dark:bg-blue-900/20"
               : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
           }`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
         >
           {/* 顶部工具栏 */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-600">
@@ -636,6 +797,62 @@ export function ChatAreaInput({
             </div>
           </div>
 
+          {/* 图片预览区域 */}
+          {uploadedFiles.length > 0 && (
+            <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex flex-wrap gap-2">
+                {uploadedFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="relative group bg-gray-50 dark:bg-gray-700 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600"
+                  >
+                    {/* 图片预览 */}
+                    {file.preview && (
+                      <img
+                        src={file.preview}
+                        alt={file.file.name}
+                        className="w-16 h-16 object-cover"
+                      />
+                    )}
+
+                    {/* 文件信息覆盖层 */}
+                    <div className="absolute inset-0 bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-200 flex items-center justify-center">
+                      {/* 删除按钮 */}
+                      <button
+                        onClick={() => {
+                          setUploadedFiles((files) =>
+                            files.filter((f) => f.id !== file.id)
+                          );
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    {/* 上传状态指示器 */}
+                    {file.status === "uploading" && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+
+                    {file.status === "error" && (
+                      <div className="absolute inset-0 bg-red-500 bg-opacity-80 flex items-center justify-center">
+                        <span className="text-white text-xs">!</span>
+                      </div>
+                    )}
+
+                    {/* 文件名提示 */}
+                    <div className="absolute -bottom-6 left-0 right-0 text-xs text-gray-500 dark:text-gray-400 truncate opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      {file.file.name}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 文本输入区域 */}
           <div className="relative">
             <textarea
@@ -647,7 +864,11 @@ export function ChatAreaInput({
               onCompositionEnd={() => setIsComposing(false)}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
-              placeholder="输入消息... (Enter发送，Shift+Enter换行)"
+              placeholder={
+                uploadedFiles.length > 0
+                  ? "添加描述或直接发送图片..."
+                  : "输入消息... (Enter发送，Shift+Enter换行)"
+              }
               disabled={isLoading}
               className="w-full px-4 py-3 pr-16 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 resize-none border-none outline-none"
               style={{
@@ -661,9 +882,15 @@ export function ChatAreaInput({
             <div className="absolute right-3 bottom-3">
               <button
                 onClick={handleSendMessage}
-                disabled={!content.trim() || isLoading || isComposing}
+                disabled={
+                  (!content.trim() && uploadedFiles.length === 0) ||
+                  isLoading ||
+                  isComposing
+                }
                 className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 ${
-                  content.trim() && !isLoading && !isComposing
+                  (content.trim() || uploadedFiles.length > 0) &&
+                  !isLoading &&
+                  !isComposing
                     ? "bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
                     : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                 }`}
@@ -706,6 +933,35 @@ export function ChatAreaInput({
               )}
             </div>
           </div>
+
+          {/* 拖拽覆盖层 */}
+          {isDraggingOver && (
+            <div className="absolute inset-0 bg-blue-500 bg-opacity-10 border-2 border-blue-400 border-dashed rounded-2xl flex items-center justify-center z-50">
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto mb-4 bg-blue-500 rounded-full flex items-center justify-center">
+                  <svg
+                    className="w-8 h-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium text-blue-600 dark:text-blue-400">
+                  释放以上传图片
+                </p>
+                <p className="text-sm text-blue-500 dark:text-blue-300 mt-1">
+                  支持 JPG、PNG、GIF 等格式
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 快捷提示 */}
