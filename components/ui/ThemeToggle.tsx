@@ -1,23 +1,29 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { useTheme } from '../providers/ThemeProvider';
+import React from "react";
+import { useTheme } from "../providers/ThemeProvider";
 
 interface ThemeToggleProps {
   className?: string;
 }
 
-export function ThemeToggle({ className = '' }: ThemeToggleProps) {
+export function ThemeToggle({ className = "" }: ThemeToggleProps) {
   const { theme, toggleTheme } = useTheme();
+
+  const handleToggle = () => {
+    console.log("🔄 主题切换按钮被点击:", { currentTheme: theme });
+    console.log("🔄 即将调用toggleTheme函数");
+    toggleTheme();
+    console.log("🔄 toggleTheme函数调用完成");
+  };
 
   return (
     <button
-      onClick={toggleTheme}
+      onClick={handleToggle}
       className={`p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200 ${className}`}
-      title={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
+      title={theme === "light" ? "切换到深色模式" : "切换到浅色模式"}
     >
-      {theme === 'light' ? (
-        // 月亮图标 (深色模式)
+      {theme === "light" ? (
         <svg
           className="w-5 h-5 text-gray-700 dark:text-gray-300"
           fill="none"
@@ -32,7 +38,6 @@ export function ThemeToggle({ className = '' }: ThemeToggleProps) {
           />
         </svg>
       ) : (
-        // 太阳图标 (浅色模式)
         <svg
           className="w-5 h-5 text-gray-700 dark:text-gray-300"
           fill="none"

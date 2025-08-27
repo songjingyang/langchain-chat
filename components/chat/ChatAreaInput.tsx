@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ModelProvider } from "@/lib/types";
 import { MentionPopup } from "./MentionPopup";
-import { CommandPopup, executeCommand } from "./CommandPopup";
+
 import { EmojiPicker } from "./EmojiPicker";
 import { FileUpload } from "./FileUpload";
 import { UnifiedUploadResult, uploadService } from "@/lib/upload/service";
@@ -75,12 +75,6 @@ export function ChatAreaInput({
   const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
-  // 命令功能状态
-  const [showCommands, setShowCommands] = useState(false);
-  const [commandQuery, setCommandQuery] = useState("");
-  const [commandPosition, setCommandPosition] = useState({ top: 0, left: 0 });
-  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
-
   // 表情选择器状态
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerPosition, setEmojiPickerPosition] = useState({
@@ -116,12 +110,12 @@ export function ChatAreaInput({
     const newContent = e.target.value;
     setContent(newContent);
 
-    // 检测提及和命令
-    detectMentionsAndCommands(newContent, e.target.selectionStart);
+    // 检测提及
+    detectMentions(newContent, e.target.selectionStart);
   };
 
-  // 检测提及和命令
-  const detectMentionsAndCommands = (text: string, cursorPosition: number) => {
+  // 检测提及
+  const detectMentions = (text: string, cursorPosition: number) => {
     const beforeCursor = text.slice(0, cursorPosition);
     const words = beforeCursor.split(/\s/);
     const lastWord = words[words.length - 1];
@@ -132,7 +126,6 @@ export function ChatAreaInput({
       setMentionType("@");
       setMentionQuery(query);
       setShowMentions(true);
-      setShowCommands(false);
       updateMentionPosition();
     }
     // 检测#话题
@@ -141,21 +134,11 @@ export function ChatAreaInput({
       setMentionType("#");
       setMentionQuery(query);
       setShowMentions(true);
-      setShowCommands(false);
       updateMentionPosition();
     }
-    // 检测/命令
-    else if (lastWord.startsWith("/")) {
-      const query = lastWord.slice(1);
-      setCommandQuery(query);
-      setShowCommands(true);
-      setShowMentions(false);
-      updateCommandPosition();
-    }
-    // 隐藏所有弹窗
+    // 隐藏弹窗
     else {
       setShowMentions(false);
-      setShowCommands(false);
     }
   };
 
@@ -167,18 +150,6 @@ export function ChatAreaInput({
     const rect = textarea.getBoundingClientRect();
     setMentionPosition({
       top: rect.top - 300,
-      left: rect.left,
-    });
-  };
-
-  // 更新命令弹窗位置
-  const updateCommandPosition = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const rect = textarea.getBoundingClientRect();
-    setCommandPosition({
-      top: rect.top - 350,
       left: rect.left,
     });
   };
@@ -208,42 +179,6 @@ export function ChatAreaInput({
     setTimeout(() => {
       const newCursorPosition = triggerIndex + replacement.length;
       textarea.setSelectionRange(newCursorPosition, newCursorPosition);
-      textarea.focus();
-    }, 0);
-  };
-
-  // 处理命令选择
-  const handleCommandSelect = (command: {
-    id: string;
-    command: string;
-    description: string;
-    icon: string;
-    category: string;
-  }) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const cursorPosition = textarea.selectionStart;
-    const beforeCursor = content.slice(0, cursorPosition);
-    const afterCursor = content.slice(cursorPosition);
-
-    // 找到最后一个/的位置
-    const commandIndex = beforeCursor.lastIndexOf("/");
-    if (commandIndex === -1) return;
-
-    const beforeCommand = content.slice(0, commandIndex);
-    const newContent = beforeCommand + afterCursor;
-
-    setContent(newContent);
-    setShowCommands(false);
-
-    // 执行命令
-    executeCommand(command, (action, data) => {
-      console.log("执行命令:", action, data);
-      // 这里可以添加具体的命令执行逻辑
-    });
-
-    setTimeout(() => {
       textarea.focus();
     }, 0);
   };
@@ -332,7 +267,7 @@ export function ChatAreaInput({
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // 如果有弹窗打开，不处理Enter键
-    if (showMentions || showCommands) {
+    if (showMentions) {
       return;
     }
 
@@ -972,7 +907,6 @@ export function ChatAreaInput({
               { key: "Shift+Enter", desc: "换行" },
               { key: "@", desc: "提及用户" },
               { key: "#", desc: "添加话题" },
-              { key: "/", desc: "快捷命令" },
             ].map((tip) => (
               <div
                 key={tip.key}
@@ -1014,17 +948,6 @@ export function ChatAreaInput({
         onClose={() => setShowMentions(false)}
         selectedIndex={selectedMentionIndex}
         onSelectedIndexChange={setSelectedMentionIndex}
-      />
-
-      {/* 命令弹窗 */}
-      <CommandPopup
-        isOpen={showCommands}
-        query={commandQuery}
-        position={commandPosition}
-        onSelect={handleCommandSelect}
-        onClose={() => setShowCommands(false)}
-        selectedIndex={selectedCommandIndex}
-        onSelectedIndexChange={setSelectedCommandIndex}
       />
 
       {/* 表情选择器 */}

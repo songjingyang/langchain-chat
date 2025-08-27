@@ -23,6 +23,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  console.log("🏗️ RootLayout 渲染中");
+
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body

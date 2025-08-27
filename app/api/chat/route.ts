@@ -13,6 +13,13 @@ import {
   debugMultimodalSupport,
 } from "@/lib/ai/multimodal";
 
+// 媒体生成请求类型
+interface MediaGenerationRequest {
+  type: "image" | "video";
+  description: string;
+  confidence: number;
+}
+
 export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
@@ -80,6 +87,35 @@ export async function POST(req: NextRequest) {
 
     // 获取实际的模型名称
     const actualModelName = MODEL_CONFIGS[model as ModelProvider].name;
+
+    // 检查是否是媒体生成请求
+    console.log("🔍 开始检查媒体生成请求:", message);
+    const mediaGenerationRequest = detectMediaGenerationRequest(message);
+    console.log("🔍 媒体生成检测结果:", mediaGenerationRequest);
+    if (mediaGenerationRequest) {
+      console.log("🎬 检测到媒体生成请求:", mediaGenerationRequest);
+
+      // 返回媒体生成指导响应
+      const guidanceResponse = createMediaGenerationGuidance(
+        mediaGenerationRequest
+      );
+
+      const readableStream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(guidanceResponse));
+          controller.close();
+        },
+      });
+
+      return new Response(readableStream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
 
     // 调试多模态支持
     debugMultimodalSupport(actualModelName);
@@ -214,5 +250,174 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
       }
     );
+  }
+}
+
+// 检测媒体生成请求
+function detectMediaGenerationRequest(
+  message: string
+): MediaGenerationRequest | null {
+  const lowerMessage = message.toLowerCase();
+
+  // 视频生成关键词
+  const videoKeywords = [
+    "生成视频",
+    "制作视频",
+    "创建视频",
+    "视频生成",
+    "做个视频",
+    "做一个视频",
+    "生成一个",
+    "生成一段",
+    "制作一个",
+    "制作一段",
+    "帮我生成一个视频",
+    "帮我做个视频",
+    "生成一段视频",
+    "制作一段视频",
+    "video",
+    "generate video",
+    "create video",
+    "make video",
+  ];
+
+  // 图片生成关键词
+  const imageKeywords = [
+    "生成图片",
+    "生成图像",
+    "制作图片",
+    "创建图片",
+    "画一个",
+    "画个",
+    "帮我生成一张图",
+    "帮我画个",
+    "生成一张图",
+    "制作一张图",
+    "image",
+    "generate image",
+    "create image",
+    "draw",
+    "paint",
+  ];
+
+  // 检查视频生成请求
+  for (const keyword of videoKeywords) {
+    if (lowerMessage.includes(keyword)) {
+      // 提取描述内容
+      const description = extractMediaDescription(message, keyword);
+      console.log("🎬 视频生成关键词匹配:", { keyword, message, description });
+      return {
+        type: "video",
+        description,
+        confidence: 0.9,
+      };
+    }
+  }
+
+  // 特殊检查：包含"视频"且有描述性内容的请求
+  if (
+    lowerMessage.includes("视频") &&
+    (lowerMessage.includes("生成") ||
+      lowerMessage.includes("制作") ||
+      lowerMessage.includes("创建") ||
+      lowerMessage.includes("做"))
+  ) {
+    console.log("🎬 特殊视频生成请求匹配:", message);
+    return {
+      type: "video",
+      description: message,
+      confidence: 0.8,
+    };
+  }
+
+  // 检查图片生成请求
+  for (const keyword of imageKeywords) {
+    if (lowerMessage.includes(keyword)) {
+      // 提取描述内容
+      const description = extractMediaDescription(message, keyword);
+      return {
+        type: "image",
+        description,
+        confidence: 0.8,
+      };
+    }
+  }
+
+  return null;
+}
+
+// 提取媒体描述
+function extractMediaDescription(message: string, keyword: string): string {
+  const lowerMessage = message.toLowerCase();
+  const keywordIndex = lowerMessage.indexOf(keyword.toLowerCase());
+
+  if (keywordIndex === -1) return message;
+
+  // 尝试提取关键词后的描述
+  const afterKeyword = message.substring(keywordIndex + keyword.length).trim();
+
+  // 移除常见的连接词
+  const cleanDescription = afterKeyword
+    .replace(/^(的|：|:|\s)+/, "")
+    .replace(/^(关于|about|of)\s+/, "")
+    .trim();
+
+  return cleanDescription || message;
+}
+
+// 创建媒体生成指导响应
+function createMediaGenerationGuidance(
+  request: MediaGenerationRequest
+): string {
+  const { type, description } = request;
+
+  if (type === "video") {
+    return `我理解您想要生成一个关于"${description}"的视频。
+
+🎬 **视频生成指南**
+
+为了帮您生成视频，请按以下步骤操作：
+
+1. **使用输入框右侧的紫色视频按钮** 📹
+   - 在输入框中输入您的视频描述："${description}"
+   - 点击输入框右侧的紫色视频生成按钮
+
+2. **视频描述建议**：
+   - 保持描述简洁明了（500字符以内）
+   - 包含具体的视觉元素和动作
+   - 例如："一只可爱的小狗在草地上奔跑，阳光明媚"
+
+3. **生成说明**：
+   - 视频生成需要1-2分钟时间
+   - 生成的是GIF格式的动画视频
+   - 支持中文描述
+
+**当前描述**："${description}"
+
+请在输入框中输入完整的视频描述，然后点击紫色的视频生成按钮开始创作！`;
+  } else {
+    return `我理解您想要生成一张关于"${description}"的图片。
+
+🎨 **图片生成指南**
+
+为了帮您生成图片，请按以下步骤操作：
+
+1. **使用输入框右侧的绿色图片按钮** 🖼️
+   - 在输入框中输入您的图片描述："${description}"
+   - 点击输入框右侧的绿色图片生成按钮
+
+2. **图片描述建议**：
+   - 保持描述详细具体（1000字符以内）
+   - 包含风格、颜色、构图等细节
+   - 例如："一只可爱的金毛小狗，坐在绿色草地上，背景是蓝天白云，卡通风格"
+
+3. **生成说明**：
+   - 图片生成通常需要10-30秒
+   - 支持多种风格和尺寸
+   - 完全免费使用
+
+**当前描述**："${description}"
+
+请在输入框中输入完整的图片描述，然后点击绿色的图片生成按钮开始创作！`;
   }
 }
