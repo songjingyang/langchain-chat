@@ -68,11 +68,12 @@ export function createTrueMultimodalMessage(
         // 根据模型类型使用不同的格式
         if (model?.includes("gemini")) {
           // Google Gemini 格式 - 使用 media 类型
-          content.push({
+          const mediaContent = {
             type: "media",
             mimeType: attachment.mimeType,
             data: cleanBase64,
-          });
+          };
+          content.push(mediaContent);
         } else {
           // OpenAI 格式
           content.push({

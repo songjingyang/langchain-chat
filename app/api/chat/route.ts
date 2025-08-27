@@ -78,12 +78,16 @@ export async function POST(req: NextRequest) {
       }
     });
 
+    // 获取实际的模型名称
+    const actualModelName = MODEL_CONFIGS[model as ModelProvider].name;
+
     // 调试多模态支持
-    debugMultimodalSupport(model);
+    debugMultimodalSupport(actualModelName);
 
     // 添加当前用户消息（支持多模态）
     console.log("🔍 处理多模态消息:", {
-      model,
+      provider: model,
+      actualModelName,
       messageText: message,
       attachmentCount: attachments.length,
       attachmentDetails: attachments.map((att) => ({
@@ -98,7 +102,7 @@ export async function POST(req: NextRequest) {
     const currentMessage = processMessageWithAttachments(
       message,
       attachments,
-      model
+      actualModelName // 传递实际的模型名称而不是provider
     );
     langchainMessages.push(currentMessage);
 
