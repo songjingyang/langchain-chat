@@ -21,6 +21,7 @@ export function TypewriterText({
   const [isTyping, setIsTyping] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const displayedLengthRef = useRef(0);
+  const isUnmountedRef = useRef(false);
 
   // 清理定时器
   const clearTimer = useCallback(() => {
@@ -30,8 +31,11 @@ export function TypewriterText({
     }
   }, []);
 
-  // 打字机核心逻辑
+  // 打字机核心逻辑 - 性能优化版本
   const typeNextCharacter = useCallback(() => {
+    // 防止组件卸载后继续执行
+    if (isUnmountedRef.current) return;
+
     const currentLength = displayedLengthRef.current;
 
     if (currentLength < text.length) {
@@ -53,7 +57,7 @@ export function TypewriterText({
       timerRef.current = setTimeout(typeNextCharacter, charSpeed);
     } else {
       setIsTyping(false);
-      if (onComplete) {
+      if (onComplete && !isUnmountedRef.current) {
         onComplete();
       }
     }
@@ -100,9 +104,10 @@ export function TypewriterText({
     };
   }, [text, isStreaming, resetTypewriter, typeNextCharacter, clearTimer]);
 
-  // 组件卸载时清理
+  // 组件卸载时清理 - 增强版内存泄漏防护
   useEffect(() => {
     return () => {
+      isUnmountedRef.current = true;
       clearTimer();
     };
   }, [clearTimer]);

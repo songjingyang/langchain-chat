@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbo",
+    "dev:debug": "NODE_OPTIONS='--inspect' next dev --turbo",
     "build": "next build",
+    "build:analyze": "ANALYZE=true next build",
     "start": "next start",
-    "lint": "next lint",
+    "start:prod": "NODE_ENV=production next start",
+    "lint": "next lint --fix",
+    "lint:check": "next lint",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf .next out node_modules/.cache",
     "domain:setup": "node scripts/vercel-domain-setup.js",
     "domain:verify": "node scripts/verify-domain.js",
     "domain:shell": "./scripts/setup-domain.sh"

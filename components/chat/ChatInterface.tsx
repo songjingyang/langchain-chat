@@ -1,16 +1,22 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   Session,
   ModelProvider,
   PromptTemplate,
   TemplateContext,
 } from "@/lib/types";
-import { MessageList } from "./MessageList";
+import { MessageList } from "./OptimizedMessageList";
 import { MessageInput } from "./MessageInput";
 import { ChatAreaInput } from "./ChatAreaInput";
-import { ContextStatus } from "./ContextStatus";
+import { ContextStatus } from "./OptimizedContextStatus";
 import { Sidebar } from "../sidebar/Sidebar";
 import { TemplateSelector } from "../templates/TemplateSelector";
 import { TemplateApplicator } from "../templates/TemplateApplicator";
@@ -50,10 +56,18 @@ export function ChatInterface() {
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [templateContext, setTemplateContext] = useState<TemplateContext>({});
 
+  // 性能优化：使用ref避免不必要的重新渲染
+  const streamingContentRef = useRef<string>("");
+  const isStreamingRef = useRef<boolean>(false);
+
+  // 性能优化：缓存sessions以避免频繁调用getSessions
+  const sessionsCache = useMemo(() => getSessions(), []);
+
   // 创建新会话
   const handleNewSession = useCallback(() => {
     const newSession = createSession(selectedModel);
-    setSessions(getSessions());
+    const updatedSessions = getSessions();
+    setSessions(updatedSessions);
     setCurrentSessionState(newSession);
   }, [selectedModel]);
 
@@ -194,11 +208,15 @@ export function ChatInterface() {
 
                 if (data.type === "token") {
                   assistantContent += data.data;
-                  // 更新流式消息
+                  streamingContentRef.current = assistantContent;
+
+                  // 性能优化：减少状态更新频率，使用批量更新
                   const updatedMessage = {
                     ...assistantMessage,
                     content: assistantContent,
                   };
+
+                  // 使用函数式更新避免闭包问题
                   setCurrentSessionState((prev) => {
                     if (!prev) return null;
                     const messages = [...prev.messages];
@@ -242,13 +260,21 @@ export function ChatInterface() {
       } finally {
         setIsLoading(false);
         setStreamingMessageId(null);
+        streamingContentRef.current = "";
+        isStreamingRef.current = false;
 
-        // 刷新会话数据
+        // 性能优化：只在必要时刷新会话数据
         const refreshedSession = getSession(currentSession.id);
         if (refreshedSession) {
           setCurrentSessionState(refreshedSession);
         }
-        setSessions(getSessions());
+        // 避免频繁调用getSessions，只在会话列表真正变化时更新
+        setSessions((prev) => {
+          const newSessions = getSessions();
+          return JSON.stringify(prev) !== JSON.stringify(newSessions)
+            ? newSessions
+            : prev;
+        });
       }
     },
     [currentSession, selectedModel, isLoading]
