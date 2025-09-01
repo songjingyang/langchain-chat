@@ -15,7 +15,9 @@
     "clean": "rm -rf .next out node_modules/.cache",
     "domain:setup": "node scripts/vercel-domain-setup.js",
     "domain:verify": "node scripts/verify-domain.js",
-    "domain:shell": "./scripts/setup-domain.sh"
+    "domain:shell": "./scripts/setup-domain.sh",
+    "seo:generate-images": "node scripts/generate-seo-images.js",
+    "seo:validate": "npm run build && echo '✅ SEO 配置验证完成'"
   },
   "dependencies": {
     "@langchain/core": "^0.3.72",

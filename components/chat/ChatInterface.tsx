@@ -351,7 +351,7 @@ export function ChatInterface() {
   }, [sessions]);
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900">
+    <main className="flex h-screen bg-white dark:bg-gray-900" role="main" aria-label="AI聊天应用主界面">
       {/* 侧边栏 */}
       <div
         className={`${
@@ -374,17 +374,21 @@ export function ChatInterface() {
       {/* 主聊天区域 */}
       <div className="flex-1 flex flex-col">
         {/* 顶部工具栏 */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <header className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800" role="banner">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              aria-label={sidebarOpen ? "隐藏侧边栏" : "显示侧边栏"}
+              aria-expanded={sidebarOpen}
+              title={sidebarOpen ? "隐藏侧边栏" : "显示侧边栏"}
             >
               <svg
                 className="w-5 h-5 text-gray-600 dark:text-gray-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -397,9 +401,9 @@ export function ChatInterface() {
 
             {currentSession && (
               <div>
-                <h2 className="font-medium text-gray-900 dark:text-gray-100">
+                <h1 className="font-medium text-gray-900 dark:text-gray-100">
                   {currentSession.title}
-                </h2>
+                </h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {currentSession.messages.length} 条消息 · {selectedModel}
                 </p>
@@ -451,19 +455,23 @@ export function ChatInterface() {
         )}
 
         {/* 消息列表 */}
-        <MessageList
-          messages={currentSession?.messages || []}
-          streamingMessageId={streamingMessageId}
-          className="flex-1"
-        />
+        <section aria-label="聊天消息列表" role="log" aria-live="polite">
+          <MessageList
+            messages={currentSession?.messages || []}
+            streamingMessageId={streamingMessageId}
+            className="flex-1"
+          />
+        </section>
 
         {/* 消息输入 */}
-        <ChatAreaInput
-          onSendMessage={handleSendMessage}
-          isLoading={isLoading}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-        />
+        <section aria-label="消息输入区域" role="form">
+          <ChatAreaInput
+            onSendMessage={handleSendMessage}
+            isLoading={isLoading}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+          />
+        </section>
       </div>
 
       {/* 模板应用器 */}
@@ -488,6 +496,6 @@ export function ChatInterface() {
         isOpen={showTemplateManager}
         onClose={() => setShowTemplateManager(false)}
       />
-    </div>
+    </main>
   );
 }
