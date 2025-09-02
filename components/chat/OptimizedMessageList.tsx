@@ -49,7 +49,7 @@ export const OptimizedMessageList = React.memo(function MessageList({
   return (
     <div 
       data-message-list
-      className={`flex-1 overflow-y-auto p-4 space-y-4 ${className}`}
+      className={`h-full overflow-y-auto p-4 space-y-4 ${className}`}
     >
       {processedMessages.length === 0 ? (
         <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">

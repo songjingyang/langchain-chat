@@ -443,7 +443,7 @@ export function ChatInterface() {
               </svg>
             </button>
           </div>
-        </div>
+        </header>
 
         {/* 上下文状态 */}
         {currentSession && (
@@ -454,17 +454,26 @@ export function ChatInterface() {
           />
         )}
 
-        {/* 消息列表 */}
-        <section aria-label="聊天消息列表" role="log" aria-live="polite">
+        {/* 消息列表 - 占据剩余空间且可滚动 */}
+        <section 
+          aria-label="聊天消息列表" 
+          role="log" 
+          aria-live="polite"
+          className="flex-1 min-h-0 overflow-hidden"
+        >
           <MessageList
             messages={currentSession?.messages || []}
             streamingMessageId={streamingMessageId}
-            className="flex-1"
+            className="h-full"
           />
         </section>
 
-        {/* 消息输入 */}
-        <section aria-label="消息输入区域" role="form">
+        {/* 消息输入 - 固定在底部 */}
+        <section 
+          aria-label="消息输入区域" 
+          role="form"
+          className="flex-shrink-0"
+        >
           <ChatAreaInput
             onSendMessage={handleSendMessage}
             isLoading={isLoading}

@@ -1,10 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // 启用 React 18 的严格模式
+  reactStrictMode: true,
+  
   // 性能优化配置
   experimental: {
-    // 启用 React 18 的并发特性
-    reactStrictMode: true,
     // 优化包大小
     optimizePackageImports: [
       "@langchain/core",
@@ -104,7 +105,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2))",
+        source: "/static/(.*)",
         headers: [
           {
             key: "Cache-Control",
@@ -114,13 +115,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-
-  // 开发服务器优化
-  ...(process.env.NODE_ENV === "development" && {
-    devIndicators: {
-      buildActivity: false, // 关闭构建指示器以提升性能
-    },
-  }),
 };
 
 export default nextConfig;

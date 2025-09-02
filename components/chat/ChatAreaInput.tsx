@@ -121,7 +121,7 @@ export function ChatAreaInput({
     const lastWord = words[words.length - 1];
 
     // 检测@提及
-    if (lastWord.startsWith("@")) {
+    if (lastWord && lastWord.startsWith("@")) {
       const query = lastWord.slice(1);
       setMentionType("@");
       setMentionQuery(query);
@@ -129,7 +129,7 @@ export function ChatAreaInput({
       updateMentionPosition();
     }
     // 检测#话题
-    else if (lastWord.startsWith("#")) {
+    else if (lastWord && lastWord.startsWith("#")) {
       const query = lastWord.slice(1);
       setMentionType("#");
       setMentionQuery(query);
@@ -355,7 +355,7 @@ export function ChatAreaInput({
         file,
         progress: 0,
         status: "uploading",
-        preview,
+        ...(preview && { preview }),
       };
 
       // 添加到上传列表
@@ -451,13 +451,13 @@ export function ChatAreaInput({
 
       if (mediaUrl.startsWith("data:")) {
         const parts = mediaUrl.split(",");
-        if (parts.length === 2) {
+        if (parts.length === 2 && parts[0] && parts[1]) {
           const headerPart = parts[0]; // data:image/jpeg;base64 或 data:image/gif;base64
           base64Data = parts[1];
 
           // 提取 MIME 类型
           const mimeMatch = headerPart.match(/data:([^;]+)/);
-          if (mimeMatch) {
+          if (mimeMatch && mimeMatch[1]) {
             extractedMimeType = mimeMatch[1];
 
             // 根据实际MIME类型确定附件类型和文件扩展名
@@ -490,7 +490,7 @@ export function ChatAreaInput({
         url: mediaUrl,
         mimeType: extractedMimeType,
         content: {
-          base64: base64Data || undefined,
+          ...(base64Data && { base64: base64Data }),
           metadata: {
             generated: true,
             prompt: content,
