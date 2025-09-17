@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Message } from '@/lib/types';
 import { MessageItem } from './MessageItem';
 
@@ -10,31 +10,27 @@ interface MessageListProps {
   className?: string;
 }
 
-// 性能优化：使用React.memo防止不必要的重新渲染
-export const OptimizedMessageList = React.memo(function MessageList({
+// React Compiler 会自动优化此组件，无需手动 React.memo
+export function OptimizedMessageList({
   messages,
   streamingMessageId,
   className = '',
 }: MessageListProps) {
   
-  // 性能优化：使用useMemo缓存消息列表处理
-  const processedMessages = useMemo(() => {
-    return messages.map((message, index) => ({
-      ...message,
-      isLast: index === messages.length - 1,
-      isStreaming: message.id === streamingMessageId,
-    }));
-  }, [messages, streamingMessageId]);
+  // React Compiler 会自动缓存这些计算，无需手动 useMemo
+  const processedMessages = messages.map((message, index) => ({
+    ...message,
+    isLast: index === messages.length - 1,
+    isStreaming: message.id === streamingMessageId,
+  }));
 
-  // 性能优化：缓存滚动到底部的逻辑
-  const scrollToBottom = useMemo(() => {
-    return () => {
-      const container = document.querySelector('[data-message-list]');
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
-    };
-  }, []);
+  // React Compiler 会自动优化函数引用
+  const scrollToBottom = () => {
+    const container = document.querySelector('[data-message-list]');
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  };
 
   // 当有新消息时自动滚动到底部
   React.useEffect(() => {
@@ -44,7 +40,7 @@ export const OptimizedMessageList = React.memo(function MessageList({
         scrollToBottom();
       });
     }
-  }, [messages.length, scrollToBottom]);
+  }, [messages.length]);
 
   return (
     <div 
@@ -70,7 +66,7 @@ export const OptimizedMessageList = React.memo(function MessageList({
       )}
     </div>
   );
-});
+}
 
 // 为了向后兼容，导出原名称
 export { OptimizedMessageList as MessageList };

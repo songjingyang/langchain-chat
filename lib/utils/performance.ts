@@ -3,7 +3,7 @@
 /**
  * 防抖函数 - 防止频繁调用
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -21,7 +21,7 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * 节流函数 - 限制调用频率
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -52,7 +52,7 @@ export function batchUpdates<T>(
 /**
  * 深度比较对象 - 避免不必要的更新
  */
-export function deepEqual(obj1: any, obj2: any): boolean {
+export function deepEqual(obj1: unknown, obj2: unknown): boolean {
   if (obj1 === obj2) return true;
   
   if (obj1 == null || obj2 == null) return false;
@@ -79,7 +79,7 @@ export function deepEqual(obj1: any, obj2: any): boolean {
  */
 export function logMemoryUsage(label: string): void {
   if (process.env.NODE_ENV === 'development' && 'performance' in window) {
-    const memory = (performance as any).memory;
+    const memory = (performance as { memory?: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
     if (memory) {
       console.log(`[Memory] ${label}:`, {
         used: `${Math.round(memory.usedJSHeapSize / 1024 / 1024)}MB`,
@@ -110,7 +110,7 @@ export function measureRenderTime(componentName: string) {
 /**
  * 缓存装饰器 - 缓存函数结果
  */
-export function memoize<T extends (...args: any[]) => any>(
+export function memoize<T extends (...args: unknown[]) => unknown>(
   fn: T,
   getKey?: (...args: Parameters<T>) => string
 ): T {

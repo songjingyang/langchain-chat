@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 import { Message, ModelProvider } from "@/lib/types";
 import {
   DEFAULT_CONTEXT_CONFIGS,
@@ -14,8 +14,8 @@ interface ContextStatusProps {
   className?: string;
 }
 
-// 性能优化：使用React.memo防止不必要的重新渲染
-export const OptimizedContextStatus = React.memo(function ContextStatus({
+// React Compiler 会自动优化此组件，无需手动 React.memo
+export function OptimizedContextStatus({
   messages,
   model,
   onClearContext,
@@ -23,25 +23,21 @@ export const OptimizedContextStatus = React.memo(function ContextStatus({
 }: ContextStatusProps) {
   const config = DEFAULT_CONTEXT_CONFIGS[model];
 
-  // 性能优化：使用useMemo缓存计算结果
-  const stats = useMemo(() => {
-    return getContextStats(messages, config);
-  }, [messages, config]);
+  // React Compiler 会自动缓存这些计算，无需手动 useMemo
+  const stats = getContextStats(messages, config);
 
-  // 性能优化：缓存状态颜色计算
-  const statusColor = useMemo(() => {
-    if (stats.isLimited) return "text-orange-600 dark:text-orange-400";
-    if (stats.messageCount > config.maxMessages * 0.8)
-      return "text-yellow-600 dark:text-yellow-400";
-    return "text-green-600 dark:text-green-400";
-  }, [stats.isLimited, stats.messageCount, config.maxMessages]);
+  // React Compiler 会自动优化这些值的计算
+  const statusColor = stats.isLimited 
+    ? "text-orange-600 dark:text-orange-400"
+    : stats.messageCount > config.maxMessages * 0.8
+    ? "text-yellow-600 dark:text-yellow-400"
+    : "text-green-600 dark:text-green-400";
 
-  // 性能优化：缓存状态图标
-  const statusIcon = useMemo(() => {
-    if (stats.isLimited) return "⚠️";
-    if (stats.messageCount > config.maxMessages * 0.8) return "⚡";
-    return "✅";
-  }, [stats.isLimited, stats.messageCount, config.maxMessages]);
+  const statusIcon = stats.isLimited 
+    ? "⚠️"
+    : stats.messageCount > config.maxMessages * 0.8 
+    ? "⚡"
+    : "✅";
 
   if (messages.length === 0) return null;
 
@@ -77,7 +73,7 @@ export const OptimizedContextStatus = React.memo(function ContextStatus({
       </button>
     </div>
   );
-});
+}
 
 // 为了向后兼容，导出原名称
 export { OptimizedContextStatus as ContextStatus };

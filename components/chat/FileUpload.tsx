@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, use, useOptimistic, startTransition } from "react";
 import {
   fileTypeConfig,
   formatFileSize,
@@ -37,6 +37,34 @@ export function FileUpload({
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 🎯 React 19 优化点 7: useOptimistic 实现乐观文件上传UI
+  // 立即显示上传状态，无需等待实际上传开始
+  const [optimisticFiles, addOptimisticFile] = useOptimistic(
+    uploadedFiles,
+    (state, newFile: UploadedFile) => [...state, newFile]
+  );
+
+  // 🎯 React 19 优化点 8: 创建文件上传 Promise 缓存
+  // 使用内部状态管理异步上传
+  const createUploadPromise = (file: File): Promise<UnifiedUploadResult> => {
+    return uploadService.uploadFile(file, {
+      onProgress: (progress) => {
+        // 🎯 React 19 优化点 9: startTransition 优化高频进度更新
+        // 进度更新标记为非紧急，保持UI响应性
+        startTransition(() => {
+          const fileId = `${file.name}-${file.size}-${file.lastModified}`;
+          onFilesUploaded(
+            uploadedFiles.map((f) =>
+              f.id === fileId 
+                ? { ...f, progress: progress.percentage }
+                : f
+            )
+          );
+        });
+      },
+    });
+  };
 
   // 真实文件上传（自动选择最佳服务）
   const uploadFile = async (file: File): Promise<void> => {

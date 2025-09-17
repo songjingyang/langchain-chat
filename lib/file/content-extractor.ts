@@ -169,7 +169,7 @@ export function getImageDimensions(
 export async function createEnhancedMessageAttachment(
   file: File,
   url: string,
-  uploadResult?: any
+  uploadResult?: unknown
 ): Promise<MessageAttachment> {
   const content = await extractFileContent(file);
   const type = getFileType(file);

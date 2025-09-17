@@ -3,9 +3,10 @@
 import React, {
   useState,
   useEffect,
-  useCallback,
-  useMemo,
   useRef,
+  useActionState,
+  useOptimistic,
+  startTransition,
 } from "react";
 import {
   Session,
@@ -14,7 +15,8 @@ import {
   TemplateContext,
 } from "@/lib/types";
 import { MessageList } from "./OptimizedMessageList";
-import { MessageInput } from "./MessageInput";
+import { OptimizedMessageInput } from "./OptimizedMessageInput";
+import { ConcurrentSearchInterface } from "./ConcurrentSearchInterface";
 import { ChatAreaInput } from "./ChatAreaInput";
 import { ContextStatus } from "./OptimizedContextStatus";
 import { Sidebar } from "../sidebar/Sidebar";
@@ -60,16 +62,155 @@ export function ChatInterface() {
   const streamingContentRef = useRef<string>("");
   const isStreamingRef = useRef<boolean>(false);
 
-  // 性能优化：缓存sessions以避免频繁调用getSessions
-  const sessionsCache = useMemo(() => getSessions(), []);
+  // 🎯 React 19 优化点 1: useActionState 替代传统异步状态管理
+  // 优势：自动错误处理、pending状态、更好的并发安全性
+  const sendMessageAction = async (
+    prevState: { error?: string; pending?: boolean },
+    formData: { content: string; attachments?: MessageAttachment[] }
+  ) => {
+    if (!currentSession) {
+      return { error: "没有活动会话" };
+    }
 
-  // 创建新会话
-  const handleNewSession = useCallback(() => {
+    const { content, attachments } = formData;
+
+    try {
+      // 创建用户消息（包含附件）
+      const userMessage = createUserMessage(content, attachments);
+      addMessageToSession(currentSession.id, userMessage);
+
+      // 🎯 React 19 优化点 2: useOptimistic 乐观更新
+      // 立即更新UI，无需等待网络请求
+      addOptimisticMessage({
+        type: 'user',
+        content,
+        attachments,
+        id: userMessage.id,
+      });
+
+      // 更新会话状态
+      const updatedSession = getSession(currentSession.id);
+      if (updatedSession) {
+        setCurrentSessionState(updatedSession);
+      }
+
+      // 创建助手消息占位符
+      const assistantMessage = createAssistantMessage("", selectedModel);
+      setStreamingMessageId(assistantMessage.id);
+
+      // 发送请求到API
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: content,
+          sessionId: currentSession.id,
+          model: selectedModel,
+          attachments: attachments || [],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API请求失败: ${response.status}`);
+      }
+
+      // 处理流式响应
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("无法读取响应流");
+      }
+
+      let accumulatedContent = "";
+      isStreamingRef.current = true;
+
+      while (isStreamingRef.current) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.content) {
+                accumulatedContent += data.content;
+                streamingContentRef.current = accumulatedContent;
+
+                // 🎯 React 19 优化点 3: startTransition 优化高频更新
+                // 将频繁的内容更新标记为非紧急，保持UI响应性
+                startTransition(() => {
+                  updateMessageInSession(
+                    currentSession.id,
+                    assistantMessage.id,
+                    accumulatedContent
+                  );
+                  
+                  const updatedSession = getSession(currentSession.id);
+                  if (updatedSession) {
+                    setCurrentSessionState(updatedSession);
+                  }
+                });
+              }
+
+              if (data.done) {
+                isStreamingRef.current = false;
+                setStreamingMessageId(null);
+                break;
+              }
+            } catch (parseError) {
+              console.warn("解析响应数据失败:", parseError);
+            }
+          }
+        }
+      }
+
+      return { error: undefined };
+    } catch (error) {
+      console.error("发送消息失败:", error);
+      isStreamingRef.current = false;
+      setStreamingMessageId(null);
+      return { 
+        error: error instanceof Error ? error.message : "发送消息失败" 
+      };
+    }
+  };
+
+  // 🎯 React 19 优化点 4: useActionState 自动状态管理
+  const [sendState, sendMessage, isPendingSend] = useActionState(
+    sendMessageAction,
+    { error: undefined }
+  );
+
+  // 🎯 React 19 优化点 5: useOptimistic 乐观更新UI
+  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
+    currentSession?.messages || [],
+    (state, newMessage: { type: 'user' | 'assistant'; content: string; attachments?: MessageAttachment[]; id: string }) => [
+      ...state,
+      {
+        id: newMessage.id,
+        content: newMessage.content,
+        role: newMessage.type,
+        model: selectedModel,
+        timestamp: new Date().toISOString(),
+        attachments: newMessage.attachments || [],
+      }
+    ]
+  );
+
+  // React Compiler 会自动缓存这些计算，无需手动 useMemo
+  const sessionsCache = getSessions();
+
+  // 创建新会话 - React Compiler 会自动优化函数引用
+  const handleNewSession = () => {
     const newSession = createSession(selectedModel);
     const updatedSessions = getSessions();
     setSessions(updatedSessions);
     setCurrentSessionState(newSession);
-  }, [selectedModel]);
+  };
 
   // 初始化
   useEffect(() => {
@@ -89,199 +230,66 @@ export function ChatInterface() {
     if (loadedSessions.length === 0) {
       handleNewSession();
     }
-  }, [handleNewSession]);
+  }, [selectedModel]); // React Compiler 会自动处理依赖关系
 
-  // 选择会话
-  const handleSessionSelect = useCallback((sessionId: string) => {
+  // 选择会话 - React Compiler 会自动优化函数引用
+  const handleSessionSelect = (sessionId: string) => {
     const session = getSession(sessionId);
     if (session) {
       setCurrentSessionState(session);
       setCurrentSession(sessionId);
       setSelectedModel(session.model as ModelProvider);
     }
-  }, []);
+  };
 
-  // 删除会话
-  const handleSessionDelete = useCallback(
-    (sessionId: string) => {
-      deleteSession(sessionId);
-      setSessions(getSessions());
+  // 删除会话 - React Compiler 会自动优化函数引用
+  const handleSessionDelete = (sessionId: string) => {
+    deleteSession(sessionId);
+    setSessions(getSessions());
 
-      if (currentSession?.id === sessionId) {
-        const remainingSessions = getSessions();
-        if (remainingSessions.length > 0) {
-          handleSessionSelect(remainingSessions[0].id);
-        } else {
-          handleNewSession();
-        }
+    if (currentSession?.id === sessionId) {
+      const remainingSessions = getSessions();
+      if (remainingSessions.length > 0) {
+        handleSessionSelect(remainingSessions[0].id);
+      } else {
+        handleNewSession();
       }
-    },
-    [currentSession, handleSessionSelect, handleNewSession]
-  );
+    }
+  };
 
-  // 重命名会话
-  const handleSessionRename = useCallback(
-    (sessionId: string, newTitle: string) => {
-      updateSession(sessionId, { title: newTitle });
-      setSessions(getSessions());
+  // 重命名会话 - React Compiler 会自动优化函数引用
+  const handleSessionRename = (sessionId: string, newTitle: string) => {
+    updateSession(sessionId, { title: newTitle });
+    setSessions(getSessions());
 
-      if (currentSession?.id === sessionId) {
-        setCurrentSessionState((prev) =>
-          prev ? { ...prev, title: newTitle } : null
-        );
-      }
-    },
-    [currentSession]
-  );
+    if (currentSession?.id === sessionId) {
+      setCurrentSessionState((prev) =>
+        prev ? { ...prev, title: newTitle } : null
+      );
+    }
+  };
 
-  // 模型变更
-  const handleModelChange = useCallback(
-    (model: ModelProvider) => {
-      setSelectedModel(model);
-      if (currentSession) {
-        updateSession(currentSession.id, { model });
-        setCurrentSessionState((prev) => (prev ? { ...prev, model } : null));
-      }
-    },
-    [currentSession]
-  );
+  // 模型变更 - React Compiler 会自动优化函数引用
+  const handleModelChange = (model: ModelProvider) => {
+    setSelectedModel(model);
+    if (currentSession) {
+      updateSession(currentSession.id, { model });
+      setCurrentSessionState((prev) => (prev ? { ...prev, model } : null));
+    }
+  };
 
-  // 发送消息
-  const handleSendMessage = useCallback(
-    async (content: string, attachments?: MessageAttachment[]) => {
-      if (!currentSession || isLoading) return;
+  // 🎯 React 19 优化点 6: 简化消息发送接口
+  // 使用新的 Action 模式替代传统的 async 函数
+  const handleSendMessage = (content: string, attachments?: MessageAttachment[]) => {
+    if (!currentSession || isPendingSend) return;
+    
+    // 🎯 性能提升：React 19 的 Action 自动处理 pending 状态和错误边界
+    // 无需手动管理 isLoading 状态，减少状态更新次数
+    sendMessage({ content, attachments });
+  };
 
-      setIsLoading(true);
-
-      // 创建用户消息（包含附件）
-      const userMessage = createUserMessage(content, attachments);
-      addMessageToSession(currentSession.id, userMessage);
-
-      // 更新UI
-      const updatedSession = getSession(currentSession.id);
-      if (updatedSession) {
-        setCurrentSessionState(updatedSession);
-      }
-
-      // 创建助手消息占位符
-      const assistantMessage = createAssistantMessage("", selectedModel);
-      setStreamingMessageId(assistantMessage.id);
-
-      try {
-        // 发送请求到API，包含历史消息上下文和附件
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: content,
-            sessionId: currentSession.id,
-            model: selectedModel,
-            messages: currentSession.messages, // 发送历史消息作为上下文
-            attachments: attachments, // 发送当前消息的附件
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error("请求失败");
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("无法读取响应流");
-        }
-
-        let assistantContent = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = new TextDecoder().decode(value);
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const data = JSON.parse(line.slice(6));
-
-                if (data.type === "token") {
-                  assistantContent += data.data;
-                  streamingContentRef.current = assistantContent;
-
-                  // 性能优化：减少状态更新频率，使用批量更新
-                  const updatedMessage = {
-                    ...assistantMessage,
-                    content: assistantContent,
-                  };
-
-                  // 使用函数式更新避免闭包问题
-                  setCurrentSessionState((prev) => {
-                    if (!prev) return null;
-                    const messages = [...prev.messages];
-                    const lastIndex = messages.length - 1;
-                    if (
-                      lastIndex >= 0 &&
-                      messages[lastIndex].id === assistantMessage.id
-                    ) {
-                      messages[lastIndex] = updatedMessage;
-                    } else {
-                      messages.push(updatedMessage);
-                    }
-                    return { ...prev, messages };
-                  });
-                } else if (data.type === "end") {
-                  // 保存完整的助手消息
-                  const finalMessage = {
-                    ...assistantMessage,
-                    content: assistantContent,
-                  };
-                  addMessageToSession(currentSession.id, finalMessage);
-                  break;
-                } else if (data.type === "error") {
-                  throw new Error(data.data);
-                }
-              } catch (e) {
-                console.error("解析SSE数据失败:", e);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error("发送消息失败:", error);
-        const errorMessage = createAssistantMessage(
-          `抱歉，发生了错误: ${
-            error instanceof Error ? error.message : "未知错误"
-          }`,
-          selectedModel
-        );
-        addMessageToSession(currentSession.id, errorMessage);
-      } finally {
-        setIsLoading(false);
-        setStreamingMessageId(null);
-        streamingContentRef.current = "";
-        isStreamingRef.current = false;
-
-        // 性能优化：只在必要时刷新会话数据
-        const refreshedSession = getSession(currentSession.id);
-        if (refreshedSession) {
-          setCurrentSessionState(refreshedSession);
-        }
-        // 避免频繁调用getSessions，只在会话列表真正变化时更新
-        setSessions((prev) => {
-          const newSessions = getSessions();
-          return JSON.stringify(prev) !== JSON.stringify(newSessions)
-            ? newSessions
-            : prev;
-        });
-      }
-    },
-    [currentSession, selectedModel, isLoading]
-  );
-
-  // 清除当前会话的上下文（保留当前会话但清空消息）
-  const handleClearContext = useCallback(() => {
+  // 清除当前会话的上下文（保留当前会话但清空消息）- React Compiler 会自动优化函数引用
+  const handleClearContext = () => {
     if (!currentSession) return;
 
     if (confirm("确定要清除当前对话的上下文吗？这将删除所有历史消息。")) {
@@ -294,39 +302,33 @@ export function ChatInterface() {
       );
       setSessions(getSessions());
     }
-  }, [currentSession]);
+  };
 
-  // 处理模板选择
-  const handleSelectTemplate = useCallback(
-    (template: PromptTemplate) => {
+  // 处理模板选择 - React Compiler 会自动优化函数引用
+  const handleSelectTemplate = (template: PromptTemplate) => {
       setSelectedTemplate(template);
       setTemplateContext({
         history: currentSession?.messages || [],
         variables: {},
       });
       setShowTemplateApplicator(true);
-    },
-    [currentSession]
-  );
+    };
 
-  // 处理模板应用
-  const handleApplyTemplate = useCallback(
-    (content: string) => {
+  // 处理模板应用 - React Compiler 会自动优化函数引用
+  const handleApplyTemplate = (content: string) => {
       // 直接发送模板生成的内容
       handleSendMessage(content);
       setShowTemplateApplicator(false);
       setSelectedTemplate(null);
-    },
-    [handleSendMessage]
-  );
+    };
 
-  // 处理创建新模板
-  const handleCreateTemplate = useCallback(() => {
+  // 处理创建新模板 - React Compiler 会自动优化函数引用
+  const handleCreateTemplate = () => {
     setShowTemplateManager(true);
-  }, []);
+  };
 
-  // 导出会话
-  const handleExportSessions = useCallback(() => {
+  // 导出会话 - React Compiler 会自动优化函数引用
+  const handleExportSessions = () => {
     if (sessions.length === 0) return;
 
     const exportData = {
@@ -348,7 +350,7 @@ export function ChatInterface() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [sessions]);
+  };
 
   return (
     <main className="flex h-screen bg-white dark:bg-gray-900" role="main" aria-label="AI聊天应用主界面">

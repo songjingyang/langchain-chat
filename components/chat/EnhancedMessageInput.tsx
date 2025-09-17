@@ -56,7 +56,7 @@ export function EnhancedMessageInput({
   const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
-  // 自动调整文本框高度
+  // 自动调整文本框高度 - 需要在useEffect中使用，保留useCallback
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -76,8 +76,8 @@ export function EnhancedMessageInput({
     setContent(e.target.value);
   };
 
-  // 处理发送消息
-  const handleSendMessage = useCallback(() => {
+  // 处理发送消息 - React Compiler 会自动优化函数引用
+  const handleSendMessage = () => {
     if (!content.trim() || isLoading || isComposing) return;
 
     onSendMessage(content.trim());
@@ -90,7 +90,7 @@ export function EnhancedMessageInput({
         textareaRef.current.style.height = "56px";
       }
     }, 0);
-  }, [content, isLoading, isComposing, onSendMessage]);
+  };
 
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

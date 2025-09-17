@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   
   // 性能优化配置
   experimental: {
+    // 启用 React Compiler
+    reactCompiler: true,
+    
     // 优化包大小
     optimizePackageImports: [
       "@langchain/core",

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 
 interface PromptOptimizerProps {
   content: string;
@@ -28,8 +28,8 @@ export function PromptOptimizer({
 }: PromptOptimizerProps) {
   const [isOptimizing, setIsOptimizing] = useState(false);
 
-  // 优化提示词
-  const optimizePrompt = useCallback(async () => {
+  // 优化提示词 - React Compiler 会自动优化函数引用
+  const optimizePrompt = async () => {
     if (!content.trim()) {
       onError?.("请先输入内容再进行优化");
       return;
@@ -69,7 +69,7 @@ export function PromptOptimizer({
       setIsOptimizing(false);
       onError?.((error as Error).message);
     }
-  }, [content, onOptimized, onError]);
+  };
 
   // 是否可以优化
   const canOptimize = content.trim().length > 0 && content.length <= 2000;

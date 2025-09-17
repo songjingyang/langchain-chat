@@ -23,15 +23,15 @@ export function TypewriterText({
   const displayedLengthRef = useRef(0);
   const isUnmountedRef = useRef(false);
 
-  // 清理定时器
+  // 清理定时器 - 需要在useEffect中使用，保留useCallback
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-  }, []);
+  }, []); 
 
-  // 打字机核心逻辑 - 性能优化版本
+  // 打字机核心逻辑 - 需要在useEffect中使用，保留useCallback
   const typeNextCharacter = useCallback(() => {
     // 防止组件卸载后继续执行
     if (isUnmountedRef.current) return;
@@ -63,7 +63,7 @@ export function TypewriterText({
     }
   }, [text, speed, onComplete]);
 
-  // 重置打字机状态
+  // 重置打字机状态 - 需要在useEffect中使用，保留useCallback
   const resetTypewriter = useCallback(() => {
     clearTimer();
     setDisplayedText("");
@@ -102,7 +102,7 @@ export function TypewriterText({
     return () => {
       clearTimer();
     };
-  }, [text, isStreaming, resetTypewriter, typeNextCharacter, clearTimer]);
+  }, [text, isStreaming, resetTypewriter, typeNextCharacter]); // 包含正确的依赖
 
   // 组件卸载时清理 - 增强版内存泄漏防护
   useEffect(() => {
@@ -110,7 +110,7 @@ export function TypewriterText({
       isUnmountedRef.current = true;
       clearTimer();
     };
-  }, [clearTimer]);
+  }, [clearTimer]); // 包含正确的依赖
 
   return (
     <span className={`inline ${className}`}>
