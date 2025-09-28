@@ -8,7 +8,22 @@ interface ImageGenerationRequest {
   enhance?: boolean;
 }
 
-// 免费AI图像生成服务配置
+// 千问AI图像生成服务配置
+const QWEN_IMAGE_SERVICE = {
+  name: "千问文生图",
+  baseUrl:
+    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+  description: "阿里云通义千问文生图服务",
+  requiresKey: true,
+  models: [
+    "flux-dev",
+    "flux-schnell",
+    "stable-diffusion-v1.5",
+    "stable-diffusion-xl",
+  ],
+};
+
+// 免费AI图像生成服务配置（备用）
 const FREE_IMAGE_SERVICES = {
   pollinations: {
     name: "Pollinations AI",
@@ -60,7 +75,7 @@ export async function POST(request: NextRequest) {
     const optimizedPrompt = optimizePromptForGeneration(prompt);
 
     console.log("🎨 开始生成图像:", {
-      service: "Pollinations AI (免费)",
+      service: "千问文生图 (优先)",
       originalPrompt:
         prompt.substring(0, 100) + (prompt.length > 100 ? "..." : ""),
       optimizedPrompt:
@@ -69,23 +84,37 @@ export async function POST(request: NextRequest) {
       dimensions: `${width}x${height}`,
     });
 
-    // 定义fallback服务顺序
-    const fallbackServices = ["pollinations", "freeimage", "together"];
+    // 定义服务优先级：千问优先，免费服务备用
+    const serviceOrder = ["qwen", "pollinations", "freeimage", "together"];
 
     let imageUrl = "";
-    let usedService = "pollinations";
+    let usedService = "qwen";
     let lastError = "";
 
-    // 尝试使用不同的免费服务
-    for (const currentService of fallbackServices) {
+    // 尝试使用不同的服务（千问优先）
+    for (const currentService of serviceOrder) {
       try {
-        const serviceInfo =
-          FREE_IMAGE_SERVICES[
-            currentService as keyof typeof FREE_IMAGE_SERVICES
-          ];
+        let serviceInfo;
+
+        if (currentService === "qwen") {
+          serviceInfo = QWEN_IMAGE_SERVICE;
+        } else {
+          serviceInfo =
+            FREE_IMAGE_SERVICES[
+              currentService as keyof typeof FREE_IMAGE_SERVICES
+            ];
+        }
+
+        if (!serviceInfo) {
+          console.log(`⚠️ 服务 ${currentService} 配置未找到，跳过`);
+          continue;
+        }
+
         console.log(`🚀 尝试使用: ${serviceInfo.name}`);
 
-        if (currentService === "pollinations") {
+        if (currentService === "qwen") {
+          imageUrl = await generateWithQwen(optimizedPrompt, width, height);
+        } else if (currentService === "pollinations") {
           imageUrl = await generateWithPollinations(
             optimizedPrompt,
             width,
@@ -111,7 +140,7 @@ export async function POST(request: NextRequest) {
         console.error(`❌ ${serviceInfo.name} 失败:`, lastError);
 
         // 如果不是最后一个服务，继续尝试下一个
-        if (currentService !== fallbackServices[fallbackServices.length - 1]) {
+        if (currentService !== serviceOrder[serviceOrder.length - 1]) {
           console.log(`正在尝试备用服务...`);
           continue;
         }
@@ -379,22 +408,205 @@ function optimizePromptForGeneration(prompt: string): string {
   return prompt;
 }
 
+// 千问文生图API调用
+async function generateWithQwen(
+  prompt: string,
+  width: number,
+  height: number
+): Promise<string> {
+  const apiKey =
+    process.env.QWEN_API_KEY || "sk-1c16b732f069448b97f51a90ec3f969d";
+
+  if (!apiKey) {
+    throw new Error("千问API密钥未配置");
+  }
+
+  console.log("🎯 调用千问文生图API...");
+
+  const requestBody = {
+    model: "flux-dev", // 使用flux-dev模型，质量更高
+    input: {
+      prompt: prompt,
+      negative_prompt: "低质量, 模糊, 扭曲, 变形",
+      size: `${width}*${height}`,
+    },
+    parameters: {
+      seed: Math.floor(Math.random() * 1000000),
+      steps: 20,
+      scale: 7.5,
+    },
+  };
+
+  try {
+    const response = await fetch(QWEN_IMAGE_SERVICE.baseUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-DashScope-Async": "enable", // 启用异步处理
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log(`📡 千问API响应:`, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ 千问API错误响应:", errorText);
+      throw new Error(`千问API错误 ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log("📊 千问API返回结构:", {
+      hasOutput: !!result.output,
+      hasTaskId: !!result.task_id,
+      status: result.task_status,
+    });
+
+    // 处理异步任务
+    if (result.task_id && result.task_status === "PENDING") {
+      console.log("⏳ 任务提交成功，等待异步处理...");
+
+      // 轮询任务状态
+      const taskResult = await pollQwenTask(result.task_id, apiKey);
+      if (taskResult && taskResult.output && taskResult.output.results) {
+        const imageUrl = taskResult.output.results[0]?.url;
+        if (imageUrl) {
+          // 下载图片并转换为base64
+          return await downloadAndConvertToBase64(imageUrl);
+        }
+      }
+      throw new Error("千问异步任务处理失败");
+    }
+
+    // 处理同步响应
+    if (
+      result.output &&
+      result.output.results &&
+      result.output.results.length > 0
+    ) {
+      const imageUrl = result.output.results[0].url;
+      console.log(
+        "✅ 千问图像生成成功，图片URL:",
+        imageUrl.substring(0, 50) + "..."
+      );
+
+      // 下载图片并转换为base64
+      return await downloadAndConvertToBase64(imageUrl);
+    }
+
+    throw new Error("千问API返回格式异常，未找到图像数据");
+  } catch (error) {
+    console.error("❌ 千问API调用失败:", error);
+    throw error;
+  }
+}
+
+// 轮询千问异步任务状态
+async function pollQwenTask(
+  taskId: string,
+  apiKey: string,
+  maxAttempts: number = 30
+): Promise<any> {
+  const pollUrl = `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      console.log(`🔄 轮询任务状态 (${attempt + 1}/${maxAttempts})...`);
+
+      const response = await fetch(pollUrl, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`轮询请求失败: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log(`📊 任务状态: ${result.task_status}`);
+
+      if (result.task_status === "SUCCEEDED") {
+        console.log("✅ 异步任务完成");
+        return result;
+      } else if (result.task_status === "FAILED") {
+        throw new Error(`任务失败: ${result.message || "未知错误"}`);
+      }
+
+      // 等待2秒后继续轮询
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.error(`❌ 轮询错误 (尝试 ${attempt + 1}):`, error);
+      if (attempt === maxAttempts - 1) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("任务轮询超时");
+}
+
+// 下载图片并转换为base64
+async function downloadAndConvertToBase64(imageUrl: string): Promise<string> {
+  try {
+    console.log("📥 下载千问生成的图片...");
+
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`图片下载失败: ${imageResponse.status}`);
+    }
+
+    const imageBlob = await imageResponse.blob();
+    const arrayBuffer = await imageBlob.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+    console.log("✅ 图片下载并转换完成:", {
+      size: imageBlob.size,
+      type: imageBlob.type,
+      base64Length: base64.length,
+    });
+
+    return `data:${imageBlob.type};base64,${base64}`;
+  } catch (error) {
+    console.error("❌ 图片下载转换失败:", error);
+    throw error;
+  }
+}
+
 // 获取可用服务信息
 export async function GET() {
   return NextResponse.json({
-    service: "free-image-generation",
+    service: "hybrid-image-generation",
     status: "available",
-    providers: FREE_IMAGE_SERVICES,
-    primaryProvider: "Pollinations AI",
-    features: [
-      "完全免费使用",
-      "无需API密钥",
-      "支持中文描述",
-      "自动fallback机制",
-      "高质量图像生成",
+    primaryProvider: QWEN_IMAGE_SERVICE,
+    fallbackProviders: FREE_IMAGE_SERVICES,
+    serviceOrder: [
+      "千问文生图",
+      "Pollinations AI",
+      "Free Image API",
+      "Together AI",
     ],
-    maxPromptLength: 1000,
-    supportedSizes: ["512x512", "768x768", "1024x1024"],
-    description: "基于多个免费AI服务的图像生成",
+    features: [
+      "千问高质量文生图优先",
+      "多服务自动备用机制",
+      "支持中文描述",
+      "异步任务处理",
+      "智能错误恢复",
+    ],
+    qwenFeatures: [
+      "专业级图像质量",
+      "支持多种模型",
+      "异步处理大图",
+      "中文提示词优化",
+    ],
+    maxPromptLength: 800, // 千问限制
+    supportedSizes: ["512x512", "768x768", "1024x1024", "1280x720"],
+    supportedModels: QWEN_IMAGE_SERVICE.models,
+    description: "千问文生图为主，免费服务备用的混合图像生成服务",
   });
 }

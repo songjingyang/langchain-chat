@@ -7,7 +7,18 @@ interface VideoGenerationRequest {
   height?: number;
 }
 
-// 免费视频生成服务配置
+// 千问视频生成服务配置
+const QWEN_VIDEO_SERVICE = {
+  name: "千问文生视频",
+  baseUrl:
+    "https://dashscope.aliyuncs.com/api/v1/services/video-generation/generation",
+  description: "阿里云通义千问文生视频服务",
+  requiresKey: true,
+  models: ["text-to-video-synthesis"],
+  maxDuration: 10, // 最大10秒
+};
+
+// 免费视频生成服务配置（备用）
 const FREE_VIDEO_SERVICES = {
   lumalabs: {
     name: "Luma Labs (免费试用)",
@@ -54,13 +65,45 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("🎬 开始生成视频:", {
+      service: "千问文生视频 (优先)",
       prompt: prompt.substring(0, 100) + (prompt.length > 100 ? "..." : ""),
       duration,
       dimensions: `${width}x${height}`,
     });
 
-    // 由于真实的视频生成需要大量计算资源和付费API
-    // 我们提供一个创意的解决方案：生成多帧图像组成GIF动画
+    // 首先尝试使用千问视频生成服务
+    try {
+      console.log("🚀 尝试使用千问文生视频...");
+      const qwenResult = await generateVideoWithQwen(
+        prompt,
+        duration,
+        width,
+        height
+      );
+
+      if (qwenResult) {
+        const result = {
+          videoUrl: qwenResult.videoUrl,
+          prompt,
+          duration,
+          dimensions: { width, height },
+          service: QWEN_VIDEO_SERVICE.name,
+          format: qwenResult.format || "video/mp4",
+          timestamp: new Date().toISOString(),
+          note: "千问AI生成的高质量视频",
+          mimeType: qwenResult.format || "video/mp4",
+          isVideo: true,
+        };
+
+        console.log("✅ 千问视频生成成功");
+        return NextResponse.json(result);
+      }
+    } catch (qwenError) {
+      console.error("❌ 千问视频生成失败:", qwenError);
+      console.log("🔄 切换到备用服务...");
+    }
+
+    // 千问失败后，使用备用的GIF动画生成方案
     try {
       const videoResult = await generateAnimatedGIF(
         prompt,
@@ -184,28 +227,37 @@ async function generateAnimatedGIF(
     }
 
     // 降级方案：返回第一帧但标记为GIF格式
-    const firstFrame = imageFrames[0];
-    const base64 = firstFrame.toString("base64");
+    if (imageFrames.length > 0) {
+      const firstFrame = imageFrames[0]!; // 非空断言，因为已经检查了length > 0
+      const base64 = firstFrame.toString("base64");
 
-    return {
-      videoUrl: `data:image/gif;base64,${base64}`,
-      frames: imageFrames.length,
-      actualFormat: "image/gif",
-      note: `基于 ${imageFrames.length} 帧概念生成的图像（GIF格式）`,
-    };
+      return {
+        videoUrl: `data:image/gif;base64,${base64}`,
+        frames: imageFrames.length,
+        actualFormat: "image/gif",
+        note: `基于 ${imageFrames.length} 帧概念生成的图像（GIF格式）`,
+      };
+    }
+
+    throw new Error("无法生成任何帧");
   } catch (error) {
     console.error("❌ GIF生成失败:", error);
 
     // 最终降级：返回第一帧作为静态图片
-    const firstFrame = imageFrames[0];
-    const base64 = firstFrame.toString("base64");
+    if (imageFrames.length > 0) {
+      const firstFrame = imageFrames[0]!; // 非空断言，因为已经检查了length > 0
+      const base64 = firstFrame.toString("base64");
 
-    return {
-      videoUrl: `data:image/jpeg;base64,${base64}`,
-      frames: 1,
-      actualFormat: "image/jpeg",
-      note: "由于GIF生成限制，返回静态图片",
-    };
+      return {
+        videoUrl: `data:image/jpeg;base64,${base64}`,
+        frames: 1,
+        actualFormat: "image/jpeg",
+        note: "由于GIF生成限制，返回静态图片",
+      };
+    }
+
+    // 如果一帧都没有生成，抛出错误
+    throw new Error("无法生成任何图像帧");
   }
 }
 
@@ -282,28 +334,208 @@ function createFramePrompt(
   }
 }
 
+// 千问文生视频API调用
+async function generateVideoWithQwen(
+  prompt: string,
+  duration: number,
+  width: number,
+  height: number
+): Promise<{ videoUrl: string; format: string } | null> {
+  const apiKey =
+    process.env.QWEN_API_KEY || "sk-1c16b732f069448b97f51a90ec3f969d";
+
+  if (!apiKey) {
+    throw new Error("千问API密钥未配置");
+  }
+
+  console.log("🎯 调用千问文生视频API...");
+
+  const requestBody = {
+    model: "text-to-video-synthesis",
+    input: {
+      text: prompt,
+      duration: Math.min(duration, QWEN_VIDEO_SERVICE.maxDuration), // 限制最大时长
+    },
+    parameters: {
+      resolution: `${width}x${height}`,
+      fps: 24,
+      seed: Math.floor(Math.random() * 1000000),
+    },
+  };
+
+  try {
+    const response = await fetch(QWEN_VIDEO_SERVICE.baseUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-DashScope-Async": "enable", // 启用异步处理
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log(`📡 千问视频API响应:`, {
+      status: response.status,
+      statusText: response.statusText,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ 千问视频API错误响应:", errorText);
+      throw new Error(`千问视频API错误 ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log("📊 千问视频API返回结构:", {
+      hasOutput: !!result.output,
+      hasTaskId: !!result.task_id,
+      status: result.task_status,
+    });
+
+    // 处理异步任务
+    if (result.task_id && result.task_status === "PENDING") {
+      console.log("⏳ 视频生成任务提交成功，等待异步处理...");
+
+      // 轮询任务状态（视频生成通常需要更长时间）
+      const taskResult = await pollQwenVideoTask(result.task_id, apiKey);
+      if (taskResult && taskResult.output && taskResult.output.video_url) {
+        const videoUrl = taskResult.output.video_url;
+        // 下载视频并转换为base64
+        const base64Video = await downloadVideoAndConvertToBase64(videoUrl);
+        return {
+          videoUrl: base64Video,
+          format: "video/mp4",
+        };
+      }
+      throw new Error("千问视频异步任务处理失败");
+    }
+
+    // 处理同步响应（较少见）
+    if (result.output && result.output.video_url) {
+      const videoUrl = result.output.video_url;
+      console.log(
+        "✅ 千问视频生成成功，视频URL:",
+        videoUrl.substring(0, 50) + "..."
+      );
+
+      // 下载视频并转换为base64
+      const base64Video = await downloadVideoAndConvertToBase64(videoUrl);
+      return {
+        videoUrl: base64Video,
+        format: "video/mp4",
+      };
+    }
+
+    throw new Error("千问视频API返回格式异常，未找到视频数据");
+  } catch (error) {
+    console.error("❌ 千问视频API调用失败:", error);
+    throw error;
+  }
+}
+
+// 轮询千问视频异步任务状态
+async function pollQwenVideoTask(
+  taskId: string,
+  apiKey: string,
+  maxAttempts: number = 60
+): Promise<any> {
+  const pollUrl = `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      console.log(`🔄 轮询视频生成任务状态 (${attempt + 1}/${maxAttempts})...`);
+
+      const response = await fetch(pollUrl, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`轮询请求失败: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log(`📊 视频任务状态: ${result.task_status}`);
+
+      if (result.task_status === "SUCCEEDED") {
+        console.log("✅ 视频生成任务完成");
+        return result;
+      } else if (result.task_status === "FAILED") {
+        throw new Error(`视频生成失败: ${result.message || "未知错误"}`);
+      }
+
+      // 视频生成需要更长时间，等待3秒后继续轮询
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    } catch (error) {
+      console.error(`❌ 轮询错误 (尝试 ${attempt + 1}):`, error);
+      if (attempt === maxAttempts - 1) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("视频任务轮询超时");
+}
+
+// 下载视频并转换为base64
+async function downloadVideoAndConvertToBase64(
+  videoUrl: string
+): Promise<string> {
+  try {
+    console.log("📥 下载千问生成的视频...");
+
+    const videoResponse = await fetch(videoUrl);
+    if (!videoResponse.ok) {
+      throw new Error(`视频下载失败: ${videoResponse.status}`);
+    }
+
+    const videoBlob = await videoResponse.blob();
+    const arrayBuffer = await videoBlob.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+    console.log("✅ 视频下载并转换完成:", {
+      size: videoBlob.size,
+      type: videoBlob.type,
+      base64Length: base64.length,
+    });
+
+    return `data:${videoBlob.type || "video/mp4"};base64,${base64}`;
+  } catch (error) {
+    console.error("❌ 视频下载转换失败:", error);
+    throw error;
+  }
+}
+
 // 获取可用视频服务信息
 export async function GET() {
   return NextResponse.json({
-    service: "free-video-generation",
-    status: "limited",
-    providers: FREE_VIDEO_SERVICES,
-    currentImplementation: "图像序列动画生成器",
+    service: "hybrid-video-generation",
+    status: "available",
+    primaryProvider: QWEN_VIDEO_SERVICE,
+    fallbackProviders: FREE_VIDEO_SERVICES,
+    serviceOrder: ["千问文生视频", "GIF动画生成器"],
     features: [
-      "基于图像序列的动画效果",
-      "完全免费使用",
-      "无需API密钥",
+      "千问高质量视频生成优先",
+      "智能降级到GIF动画备用",
       "支持中文描述",
+      "异步任务处理",
+      "自动错误恢复",
+    ],
+    qwenFeatures: [
+      "真实视频生成",
+      "高清画质输出",
+      "支持长达10秒视频",
+      "专业级视频效果",
     ],
     limitations: [
-      "生成的是GIF风格动画而非真实视频",
-      "帧数和质量有限制",
-      "生成时间较长（需要生成多帧图像）",
+      "千问服务可能需要较长处理时间",
+      "备用方案为GIF动画而非真实视频",
     ],
     maxPromptLength: 500,
-    supportedDurations: [1, 2, 3, 4], // 秒
-    supportedSizes: ["256x256", "512x512", "768x768"],
-    description: "基于免费图像生成的动画创建服务",
-    note: "由于免费视频生成服务的限制，目前实现为图像序列动画",
+    supportedDurations: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], // 千问最大10秒
+    supportedSizes: ["512x512", "768x768", "1024x1024", "1280x720"],
+    description: "千问文生视频为主，GIF动画备用的混合视频生成服务",
+    note: "优先使用千问AI生成真实视频，失败时降级为免费GIF动画",
   });
 }
